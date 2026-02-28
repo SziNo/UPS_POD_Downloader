@@ -1,0 +1,89 @@
+UPS POD LETÖLTŐ - HASZNÁLATI ÚTMUTATÓ
+=====================================
+----------------------------------------------------------------
+ELŐKÉSZÜLETEK:
+----------------------------------------------------------------
+Python és szükséges csomagok telepítése (első használat előtt)
+
+A program futtatásához szükség van Pythonra és néhány Python‑csomagra. Ezek telepítése egyszerű, és csak egyszer kell megcsinálni.
+
+1) Python telepítése
+- Nyisd meg: https://www.python.org/downloads
+- Kattints a Download Python 3.x gombra
+- A telepítő első képernyőjén pipáld be: Add Python to PATH
+  Ez nagyon fontos, mert ettől fog működni a python és pip parancs PowerShellben.
+- Kattints: Install Now
+
+2) Szükséges Python csomagok telepítése
+A Python telepítése után nyiss egy PowerShell ablakot, és futtasd:
+
+pip install pandas selenium openpyxl
+
+Ha régebbi a Pythonod (3.10 vagy alatta), akkor:
+
+pip install pandas==2.3.3 openpyxl==3.1.5 selenium==4.41.0
+
+3) Ellenőrzés
+PowerShellben futtasd:
+
+python --version
+pip --version
+
+Ha mindkettő verziószámot ír ki, akkor minden rendben, és a program futtatható.
+
+----------------------------------------------------------------
+GYORS ELLENŐRZŐ LISTA HASZNÁLAT ELŐTT:
+----------------------------------------------------------------
+[ ] Python telepítve? (python --version)
+[ ] Csomagok telepítve? (pip list | findstr pandas)
+[ ] Chrome böngésző telepítve?
+[ ] Bejelentkeztél UPS-be?
+[ ] Az Excel-ben megvannak a megfelelő oszlopok?
+[ ] A .ps1 fájlon feloldottad a tiltást? (Properties → Unblock)
+
+----------------------------------------------------------------
+EXCEL FÁJL ELŐKÉSZÍTÉSE:
+----------------------------------------------------------------
+Az Excel fájlnak tartalmaznia kell az alábbi oszlopokat:
+- "Tracking Number" → a nyomkövetési számok
+- "összefüz" → a letöltött fájlok végső neve (pl. számlaszám)
+- "POD feltöltve" → ha üres, feldolgozzuk; ha "OK", kihagyjuk
+
+Fontos: A program mindig az első munkalapot olvassa!
+
+----------------------------------------------------------------
+PROGRAM FUTTATÁSA:
+----------------------------------------------------------------
+1. Jobb klikk az "UPS_POD_Downloader.ps1" fájlra
+2. Válaszd: "Run with PowerShell"
+3. Ha figyelmeztetést kapsz, írd be: Y (igen)
+4. A megjelenő ablakban:
+   a) UPS URL: illeszd be a kimásolt linket
+   b) Excel fájl: tallózással válaszd ki
+   c) Letöltési mappa: tallózással válaszd ki
+5. Kattints a "Letöltés indítása" gombra
+6. Figyeld a naplót - látni fogod a folyamatot
+7. Ha kész, az Excel fájl frissül (új fájlként mentve: *_FELDOLGOZOTT.xlsx)
+
+----------------------------------------------------------------
+MIT CSINÁL A PROGRAM?
+----------------------------------------------------------------
+- Beolvassa az Excel első lapját
+- Csak azokat a sorokat dolgozza fel, ahol a "POD feltöltve" üres
+- Minden tracking számhoz:
+  * Megnyitja az UPS oldalt
+  * Beírja a tracking számot
+  * Rákattint a Track gombra
+  * Megkeresi a "Proof of Delivery" linket
+  * Letölti a PDF-et
+  * Átnevezi az "összefüz" oszlop értékére
+  * Beállítja a "POD feltöltve" = "OK" értéket
+- Végül elmenti a frissített Excel-t zöld háttérrel
+
+----------------------------------------------------------------
+HIBAELHÁRÍTÁS:
+----------------------------------------------------------------
+- Ha a program nem indul: jobb klikk a .ps1 → Properties/Tulajdonságok → 
+  "Unblock"/"Tiltás feloldása" checkbox, pipáld be!
+- Ha a böngésző nem indul: ellenőrizd, hogy Chrome telepítve van-e
+- Ha a letöltés elakad: lehet, hogy a UPS oldala változott
