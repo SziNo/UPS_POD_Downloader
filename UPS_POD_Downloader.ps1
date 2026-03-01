@@ -8,7 +8,7 @@ Add-Type -AssemblyName System.Drawing
 # GUI létrehozása
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "UPS POD Letöltő"
-$form.Size = New-Object System.Drawing.Size(650, 650)
+$form.Size = New-Object System.Drawing.Size(650, 700)  # Kicsit nagyobb a stop gomb miatt
 $form.StartPosition = "CenterScreen"
 $form.BackColor = "White"
 
@@ -159,12 +159,39 @@ $form.Controls.Add($logBox)
 # Progress bar
 $progressBar = New-Object System.Windows.Forms.ProgressBar
 $progressBar.Location = New-Object System.Drawing.Point(10, 540)
-$progressBar.Size = New-Object System.Drawing.Size(480, 25)
+$progressBar.Size = New-Object System.Drawing.Size(280, 25)  # Kisebb, hogy elférjen mellette a stop gomb
 $form.Controls.Add($progressBar)
+
+# ============================================
+# STOP GOMB - ÚJ!
+# ============================================
+$script:stopRequested = $false
+$script:pythonProcess = $null
+
+$stopButton = New-Object System.Windows.Forms.Button
+$stopButton.Location = New-Object System.Drawing.Point(300, 540)  # Progress bar mellett
+$stopButton.Size = New-Object System.Drawing.Size(90, 25)
+$stopButton.Text = "🛑 Megállítás"
+$stopButton.BackColor = "Orange"
+$stopButton.ForeColor = "White"
+$stopButton.Font = New-Object System.Drawing.Font("Arial", 9, [System.Drawing.FontStyle]::Bold)
+$stopButton.Enabled = $false  # Kezdetben tiltva, csak futás közben aktív
+$stopButton.Add_Click({
+    $script:stopRequested = $true
+    Write-Log "⚠️ Leállítás kérve... (a következő tracking után leáll)"
+    
+    # Ha van futó Python folyamat, jelzőfájlt hozunk létre
+    if ($script:pythonProcess -and !$script:pythonProcess.HasExited) {
+        $stopFilePath = Join-Path $env:TEMP "ups_pod_stop.txt"
+        Set-Content -Path $stopFilePath -Value "stop" -Force
+        Write-Log "   Jelzőfájl létrehozva: $stopFilePath"
+    }
+})
+$form.Controls.Add($stopButton)
 
 # Indítás gomb
 $startButton = New-Object System.Windows.Forms.Button
-$startButton.Location = New-Object System.Drawing.Point(500, 540)
+$startButton.Location = New-Object System.Drawing.Point(400, 540)
 $startButton.Size = New-Object System.Drawing.Size(110, 25)
 $startButton.Text = "Letöltés indítása"
 $startButton.BackColor = "ForestGreen"
@@ -183,6 +210,15 @@ function Write-Log {
 # Indítás gomb eseménykezelő
 $startButton.Add_Click({
     $startButton.Enabled = $false
+    $stopButton.Enabled = $true  # Stop gomb engedélyezése
+    $script:stopRequested = $false
+    
+    # Régi stop jelzőfájl törlése, ha van
+    $stopFilePath = Join-Path $env:TEMP "ups_pod_stop.txt"
+    if (Test-Path $stopFilePath) {
+        Remove-Item $stopFilePath -Force
+    }
+    
     $url = $urlBox.Text.Trim()
     $excelPath = $excelBox.Text.Trim()
     $downloadFolder = $folderBox.Text.Trim()
@@ -191,18 +227,21 @@ $startButton.Add_Click({
     if (-not $url) {
         [System.Windows.Forms.MessageBox]::Show("Add meg az UPS URL-t!", "Hiba", "OK", "Error")
         $startButton.Enabled = $true
+        $stopButton.Enabled = $false
         return
     }
     
     if (-not $excelPath -or -not (Test-Path $excelPath)) {
         [System.Windows.Forms.MessageBox]::Show("Érvényes Excel fájlt kell kiválasztani!", "Hiba", "OK", "Error")
         $startButton.Enabled = $true
+        $stopButton.Enabled = $false
         return
     }
     
     if (-not $downloadFolder -or -not (Test-Path $downloadFolder)) {
         [System.Windows.Forms.MessageBox]::Show("Érvényes letöltési mappát kell kiválasztani!", "Hiba", "OK", "Error")
         $startButton.Enabled = $true
+        $stopButton.Enabled = $false
         return
     }
     
@@ -215,7 +254,7 @@ $startButton.Add_Click({
     Write-Log "UPS URL: $url"
     Write-Log ""
     
-    # Python script létrehozása ideiglenes fájlban - FRISSÍTETT VERZIÓ RÉSZLETES HIBARKEZELÉSSEL
+    # Python script létrehozása ideiglenes fájlban - FRISSÍTETT VERZIÓ STOP TÁMOGATÁSSAL
     $pythonScript = @'
 import sys
 import pandas as pd
@@ -228,6 +267,13 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, WebDriverException
+
+# STOP fájl ellenőrzéséhez
+STOP_FILE = os.path.join(os.environ['TEMP'], 'ups_pod_stop.txt')
+
+def should_stop():
+    """Ellenőrzi, hogy kérték-e a leállítást"""
+    return os.path.exists(STOP_FILE)
 
 def log_message(msg):
     """Üzenet küldése a PowerShell-nek"""
@@ -371,6 +417,15 @@ def main():
         # 3. LÉPÉS: Tracking számok feldolgozása
         # =========================================
         for idx, row in to_process.iterrows():
+            # Ellenőrizzük, hogy kérték-e a leállítást
+            if should_stop():
+                log_message("⚠️ Leállítási kérés észlelve (STOP fájl)")
+                log_message("   A folyamat megszakítása a felhasználó kérésére...")
+                # STOP fájl törlése
+                if os.path.exists(STOP_FILE):
+                    os.remove(STOP_FILE)
+                break
+            
             tracking = str(row['Tracking Number']).strip()
             new_name = str(row['összefüz']).strip()
             
@@ -674,6 +729,9 @@ def main():
         if driver:
             driver.quit()
             log_message("🟢 Böngésző bezárva")
+        # STOP fájl törlése, ha maradt
+        if os.path.exists(STOP_FILE):
+            os.remove(STOP_FILE)
 
 if __name__ == "__main__":
     sys.exit(main())
@@ -702,6 +760,7 @@ if __name__ == "__main__":
     
     $process = New-Object System.Diagnostics.Process
     $process.StartInfo = $psi
+    $script:pythonProcess = $process  # Eltároljuk a folyamatot
     
     # Eseménykezelők a kimenet olvasásához
     $outputEvent = Register-ObjectEvent -InputObject $process -EventName 'OutputDataReceived' -Action {
@@ -740,6 +799,7 @@ if __name__ == "__main__":
     # Várakozás a befejeződésre
     $process.WaitForExit()
     $exitCode = $process.ExitCode
+    $script:pythonProcess = $null  # Folyamat eltávolítása
     
     # Eseménykezelők eltávolítása
     Unregister-Event -SourceIdentifier $outputEvent.Name -Force -ErrorAction SilentlyContinue
@@ -762,18 +822,32 @@ if __name__ == "__main__":
     
     $progressBar.Value = 0
     $startButton.Enabled = $true
+    $stopButton.Enabled = $false  # Stop gomb letiltása
 })
 
 # Kilépés gomb
 $exitButton = New-Object System.Windows.Forms.Button
-$exitButton.Location = New-Object System.Drawing.Point(500, 580)
-$exitButton.Size = New-Object System.Drawing.Size(110, 25)
+$exitButton.Location = New-Object System.Drawing.Point(520, 580)
+$exitButton.Size = New-Object System.Drawing.Size(90, 25)
 $exitButton.Text = "Kilépés"
 $exitButton.BackColor = "DarkRed"
 $exitButton.ForeColor = "White"
 $exitButton.Font = New-Object System.Drawing.Font("Arial", 9, [System.Drawing.FontStyle]::Bold)
-$exitButton.Add_Click({ $form.Close() })
+$exitButton.Add_Click({ 
+    # Ha van futó Python folyamat, próbáljuk meg leállítani
+    if ($script:pythonProcess -and !$script:pythonProcess.HasExited) {
+        $stopFilePath = Join-Path $env:TEMP "ups_pod_stop.txt"
+        Set-Content -Path $stopFilePath -Value "stop" -Force
+        Write-Log "⚠️ Leállítási jelzés küldve a Python folyamatnak..."
+        Start-Sleep -Seconds 2
+        if (!$script:pythonProcess.HasExited) {
+            $script:pythonProcess.Kill()
+            Write-Log "🛑 Python folyamat kényszerített leállítása"
+        }
+    }
+    $form.Close() 
+})
 $form.Controls.Add($exitButton)
 
-# Form megjelenítése - ITT VAN!
+# Form megjelenítése
 $form.ShowDialog()
