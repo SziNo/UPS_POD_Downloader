@@ -1,0 +1,45 @@
+1. A "tabok" valóban function-ök
+
+Igen, a Power Automate-ban ezeket "subflow"-nak hívják, de ugyanaz a koncepció:
+
+Main - a fő subflow, innen indul minden
+Többi subflow - újrafelhasználható egységek (pl. "Tracking szám beírása", "POD letöltése")
+Főmenü - a subflow-k sorrendje és kapcsolata
+
+2. Python integráció
+
+Igen, lehet Python scriptet hívni a Power Automate-ból:
+
+Van beépített "Run Python script" action
+Ugyanaz a Python kód működik, amit most írtunk
+A selectorokat ugyanúgy kell frissíteni, ha az UPS változik
+
+3. Mi maradna ugyanaz?
+
+✅ A Python kód logikája (Selenium, pandas)
+✅ A selectorok (st_app_trackingnumber, st_app_track_package_btn, stb.)
+✅ Az Excel kezelés
+✅ A PDF letöltés Chrome beállításokkal
+
+4. Mi változna?
+
+❌ Nincs PowerShell a Python körül
+❌ Nincs saját GUI (Power Automate adja)
+❌ Nincs kézi processz indítás
+✅ Power Automate vezérli a Python futtatását
+✅ Power Automate kezeli a felhasználói inputokat (URL, Excel, mappa)
+
+🎨 Power Automate struktúra (ahogy te is láttad):
+
+MAIN (fő subflow)
+├── 📁 Beállítások bekérése (URL, Excel, mappa)
+├── 🔄 Python script futtatása
+│   ├── 📊 Excel beolvasása
+│   ├── 🌐 Web automatizáció
+│   └── 💾 Excel mentése
+└── ✅ Eredmény megjelenítése
+
+Egyéb subflow-k (opcionális):
+├── 📦 Tracking szám feldolgozása
+├── 🔍 POD keresés
+└── 📥 PDF letöltés
