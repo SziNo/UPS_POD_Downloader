@@ -131,7 +131,7 @@ $checkList.Font = New-Object System.Drawing.Font("Arial", 9)
 $checkList.Items.AddRange(@(
     "✓ 'Tracking Number' - a nyomkövetési szám",
     "✓ 'összefűz' - a letöltött fájl végső neve (ű-vel!)",
-    "✓ 'POD feltöltve' - ha üres, feldolgozzuk; ha 'OK', kihagyjuk"
+    "✓ 'Date', 'Carton No', 'MO' - ezeket a program nem módosítja, csak ellenőrzi a színüket"
 ))
 $checkList.Enabled = $false
 $checkList.BackColor = "White"
@@ -239,7 +239,7 @@ $startButton.Add_Click({
     Write-Log "UPS URL: $url"
     Write-Log ""
     
-    # Python script – frissített verzió chat kezeléssel, shadow DOM támogatással
+    # Python script – VÉGLEGES VERZIÓ (üresség ellenőrzéssel, #92D050 színezéssel)
     $pythonScript = @'
 import sys
 import pandas as pd
@@ -252,8 +252,11 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, WebDriverException
+from openpyxl import load_workbook
+from openpyxl.styles import PatternFill
 
 STOP_FILE = os.path.join(os.environ['TEMP'], 'ups_pod_stop.txt')
+GREEN_COLOR = '92D050'  # Pontos zöld színkód (R=146, G=208, B=80)
 
 def should_stop():
     return os.path.exists(STOP_FILE)
@@ -329,11 +332,24 @@ def handle_chrome_print(driver):
         if clicked:
             log_success("Print gomb megnyomva (shadow DOM)")
         else:
-            log_error("Print gomb nem található")
+            log_error("Print gomb nem található shadow DOM‑ban")
         time.sleep(2)
         driver.switch_to.window(main)
     except Exception as e:
         log_error("Hiba a print ablak kezelésekor", str(e))
+
+def is_row_empty(ws, row_idx):
+    """
+    Ellenőrzi, hogy az A–E oszlopok (1–5) üresek-e (nincs kitöltés).
+    Ha IGEN (üres), akkor kell letölteni.
+    Ha NEM (van kitöltés), akkor már foglalkoztak vele.
+    """
+    for col in range(1, 6):  # A=1, B=2, C=3, D=4, E=5
+        cell = ws.cell(row=row_idx, column=col)
+        # Ha bármelyik cellában VAN kitöltés (fill), akkor a sor NEM üres
+        if cell.fill and cell.fill.fgColor and cell.fill.fgColor.rgb:
+            return False  # VAN kitöltés → NEM üres
+    return True  # MINDEN cella kitöltés nélküli → ÜRES
 
 def main():
     if len(sys.argv) < 4:
@@ -348,7 +364,7 @@ def main():
     log_message(f"📁 Mappa: {download_folder}")
     log_message(f"🌐 URL: {ups_url}\n")
 
-    # 1. Excel olvasás
+    # 1. Excel olvasás pandasba (az adatokhoz)
     log_message("📊 [1/5] Excel fájl beolvasása...")
     try:
         df = pd.read_excel(excel_path, sheet_name=0)
@@ -356,22 +372,47 @@ def main():
     except Exception as e:
         log_error("Excel olvasási hiba", str(e)); return 1
 
-    # Szükséges oszlopok ellenőrzése (Ű-VEL!)
-    required = ['Tracking Number', 'összefűz', 'POD feltöltve']
+    # Szükséges oszlopok ellenőrzése (csak amiket használunk)
+    required = ['Tracking Number', 'összefűz']
     missing = [c for c in required if c not in df.columns]
     if missing:
-        log_error("Hiányzó oszlopok", f"Kell: {required}, Hiányzik: {missing}")
-        return 1
+        log_error("Hiányzó oszlopok", f"Kell: {required}, Hiányzik: {missing}"); return 1
 
-    to_process = df[df['POD feltöltve'].isna() | (df['POD feltöltve'] == '')]
-    total = len(to_process)
+    # 2. Excel megnyitása openpyxl-lel a színek kezeléséhez
+    try:
+        wb = load_workbook(excel_path)
+        ws = wb.active
+    except Exception as e:
+        log_error("Excel megnyitási hiba (openpyxl)", str(e)); return 1
+
+    # Feldolgozandó sorok gyűjtése
+    to_process_indices = []
+    for idx, row in df.iterrows():
+        excel_row = idx + 2  # +2 mert a pandas 0-tól indexel, Excelben van fejléc
+        
+        # 1. Ellenőrizzük, hogy a sor üres-e (A–E oszlopok)
+        if not is_row_empty(ws, excel_row):  # Ha NEM üres (van kitöltés)
+            log_step("Szűrés", f"Sor {excel_row} már ki van töltve (van színezés), kihagyva")
+            continue
+        
+        # 2. Ellenőrizzük, hogy van-e Tracking Number és összefűz
+        tracking = str(row['Tracking Number']).strip() if pd.notna(row['Tracking Number']) else ''
+        new_name = str(row['összefűz']).strip() if pd.notna(row['összefűz']) else ''
+        
+        if not tracking or not new_name:
+            log_step("Szűrés", f"Sor {excel_row} hiányos (nincs Tracking Number vagy összefűz), kihagyva")
+            continue
+        
+        to_process_indices.append((idx, excel_row, tracking, new_name))
+    
+    total = len(to_process_indices)
     if total == 0:
         log_message("ℹ️ Nincs feldolgozandó sor."); return 0
     log_success(f"Feldolgozandó sorok: {total}")
     update_progress(0, total)
     log_message("")
 
-    # 2. Böngésző indítás
+    # 3. Böngésző indítás
     log_message("🌐 [2/5] Böngésző indítása...")
     chrome_options = Options()
     prefs = {
@@ -405,17 +446,15 @@ def main():
 
         processed = 0
         success_count = 0
+        zold_fill = PatternFill(start_color=GREEN_COLOR, end_color=GREEN_COLOR, fill_type='solid')
 
-        for idx, row in to_process.iterrows():
+        for idx, excel_row, tracking, new_name in to_process_indices:
             if should_stop():
                 log_message("⚠️ Leállítási kérés észlelve..."); break
 
-            tracking = str(row['Tracking Number']).strip()
-            new_name = str(row['összefűz']).strip()  # Ű-VEL!
-
             log_message("")
             log_message("─"*50)
-            log_message(f"📦 Feldolgozás: {tracking} -> {new_name}")
+            log_message(f"📦 Feldolgozás: {tracking} -> {new_name} (Excel sor: {excel_row})")
             log_message("─"*50)
 
             # 3a. Tracking mező
@@ -523,7 +562,12 @@ def main():
                 if os.path.exists(new_path): os.remove(new_path)
                 shutil.move(latest, new_path)
                 log_success(f"Fájl mentve: {new_name}.pdf")
-                df.loc[idx, 'POD feltöltve'] = 'OK'
+                
+                # 3i. Sor zöldre színezése (A–E oszlopok)
+                for col in range(1, 6):
+                    ws.cell(row=excel_row, column=col).fill = zold_fill
+                log_success(f"Sor {excel_row} zöldre színezve (A–E oszlopok, #{GREEN_COLOR})")
+                
                 success_count += 1
             else:
                 log_error("Nem található letöltött PDF")
@@ -537,18 +581,14 @@ def main():
         output_path = excel_path.replace('.xlsx', '_FELDOLGOZOTT.xlsx')
         if output_path == excel_path:
             output_path = excel_path + '_FELDOLGOZOTT.xlsx'
-        with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
-            df.to_excel(writer, sheet_name='Sheet1', index=False)
-            from openpyxl.styles import PatternFill
-            green_fill = PatternFill(start_color='00FF00', end_color='00FF00', fill_type='solid')
-            ws = writer.sheets['Sheet1']
-            for idx, row in df.iterrows():
-                if row['POD feltöltve'] == 'OK':
-                    r = idx + 2
-                    for col in range(1, len(df.columns)+1):
-                        ws.cell(row=r, column=col).fill = green_fill
-        log_success(f"Excel mentve: {output_path}")
-        log_message(f"📊 Sikeres: {success_count}/{total}\n")
+        
+        try:
+            wb.save(output_path)
+            log_success(f"Excel mentve: {output_path}")
+            log_message(f"📊 Sikeres: {success_count}/{total}\n")
+        except Exception as e:
+            log_error("Excel mentési hiba", str(e))
+            return 1
 
         log_message("✅ [5/5] Folyamat befejezve")
         return 0
