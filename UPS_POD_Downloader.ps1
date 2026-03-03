@@ -639,9 +639,15 @@ if __name__ == "__main__":
         }
     }
     $errorEvent = Register-ObjectEvent -InputObject $process -EventName 'ErrorDataReceived' -Action {
-        $data = $EventArgs.Data
-        if ($data -ne $null) { $form.BeginInvoke([Action]{ Write-Log "❌ PYTHON HIBA: $data" }) }
+    $data = $EventArgs.Data
+    if ($data -ne $null) { 
+        $form.BeginInvoke([Action]{ Write-Log "❌ PYTHON HIBA: $data" })
+        
+        # Hibaüzenet mentése fájlba is
+        $hibaUzenet = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - $data`r`n"
+        Add-Content -Path "C:\temp\python_hibak.log" -Value $hibaUzenet
     }
+}
     
     $process.Start() | Out-Null
     $process.BeginOutputReadLine()
