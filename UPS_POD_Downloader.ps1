@@ -130,7 +130,7 @@ $checkList.Size = New-Object System.Drawing.Size(600, 60)
 $checkList.Font = New-Object System.Drawing.Font("Arial", 9)
 $checkList.Items.AddRange(@(
     "✓ 'Tracking Number' - a nyomkövetési szám",
-    "✓ 'összefüz' - a letöltött fájl végső neve",
+    "✓ 'összefűz' - a letöltött fájl végső neve (ű-vel!)",
     "✓ 'POD feltöltve' - ha üres, feldolgozzuk; ha 'OK', kihagyjuk"
 ))
 $checkList.Enabled = $false
@@ -239,7 +239,7 @@ $startButton.Add_Click({
     Write-Log "UPS URL: $url"
     Write-Log ""
     
-    # Python script – frissített verzió chat kezeléssel
+    # Python script – frissített verzió chat kezeléssel, shadow DOM támogatással
     $pythonScript = @'
 import sys
 import pandas as pd
@@ -288,18 +288,15 @@ def check_element(driver, by, selector, timeout=5, description=""):
 def close_chat_if_present(driver):
     """Bezárja az UPS Assistant chat ablakot, ha megjelenik."""
     try:
-        # Megnézzük, van‑e chat konténer
         chat = driver.find_elements(By.CSS_SELECTOR, "div.WACBotContainer")
         if not chat:
             return
         log_step("Chat", "UPS Assistant chat észlelve, bezárás...")
-        # Bezárás gomb (kuka / X) – a te HTML‑ed alapján az End chat and close gomb
         close_btn = WebDriverWait(driver, 3).until(
             EC.element_to_be_clickable((By.CSS_SELECTOR, "button.WACHeader__CloseAndRestartButton"))
         )
         close_btn.click()
         time.sleep(1)
-        # Megerősítő modal "Yes" gomb
         yes_btn = WebDriverWait(driver, 3).until(
             EC.element_to_be_clickable((By.CSS_SELECTOR, "button.WACConfirmModal__YesButton"))
         )
@@ -310,9 +307,8 @@ def close_chat_if_present(driver):
         log_step("Chat", f"Nem sikerült bezárni a chatet: {str(e)}")
 
 def handle_chrome_print(driver):
-    """Kezeli a Chrome print ablakot – shadow DOM miatt különleges."""
+    """Kezeli a Chrome print ablakot – shadow DOM miatt JavaScript kell."""
     try:
-        # Váltás a print ablakra
         main = driver.current_window_handle
         for handle in driver.window_handles:
             if handle != main:
@@ -321,7 +317,6 @@ def handle_chrome_print(driver):
         log_step("Print", "Print ablakba váltottunk")
         time.sleep(2)
 
-        # Shadow DOM‑os cr‑button kezelése JavaScript segítségével
         script = """
         const printBtn = document.querySelector('cr-button.action-button');
         if (printBtn) {
@@ -334,10 +329,8 @@ def handle_chrome_print(driver):
         if clicked:
             log_success("Print gomb megnyomva (shadow DOM)")
         else:
-            log_error("Print gomb nem található shadow DOM‑ban")
+            log_error("Print gomb nem található")
         time.sleep(2)
-
-        # Vissza a főablakra
         driver.switch_to.window(main)
     except Exception as e:
         log_error("Hiba a print ablak kezelésekor", str(e))
@@ -363,10 +356,12 @@ def main():
     except Exception as e:
         log_error("Excel olvasási hiba", str(e)); return 1
 
-    required = ['Tracking Number', 'összefüz', 'POD feltöltve']
+    # Szükséges oszlopok ellenőrzése (Ű-VEL!)
+    required = ['Tracking Number', 'összefűz', 'POD feltöltve']
     missing = [c for c in required if c not in df.columns]
     if missing:
-        log_error("Hiányzó oszlopok", f"Kell: {required}, Hiányzik: {missing}"); return 1
+        log_error("Hiányzó oszlopok", f"Kell: {required}, Hiányzik: {missing}")
+        return 1
 
     to_process = df[df['POD feltöltve'].isna() | (df['POD feltöltve'] == '')]
     total = len(to_process)
@@ -416,7 +411,7 @@ def main():
                 log_message("⚠️ Leállítási kérés észlelve..."); break
 
             tracking = str(row['Tracking Number']).strip()
-            new_name = str(row['összefüz']).strip()
+            new_name = str(row['összefűz']).strip()  # Ű-VEL!
 
             log_message("")
             log_message("─"*50)
@@ -460,10 +455,10 @@ def main():
             track_btn.click()
             log_success(f"Track gomb megnyomva ({used})")
 
-            # 3c. Chat kezelése ha felugrik (párhuzamosan a POD link várakozásával)
+            # 3c. Chat kezelése ha felugrik
             close_chat_if_present(driver)
 
-            # 3d. POD link keresése (akár a chat után, akár előtte jön)
+            # 3d. POD link keresése
             log_step("3c", "Proof of Delivery link keresése...")
             pod_selectors = [
                 (By.ID, "stApp_btnProofOfDeliveryonDetails", "ID: stApp_btnProofOfDeliveryonDetails"),
@@ -472,7 +467,7 @@ def main():
             ]
             pod_link = None
             for by, sel, desc in pod_selectors:
-                el = check_element(driver, by, sel, 10, desc)  # itt 10 mp timeout
+                el = check_element(driver, by, sel, 10, desc)
                 if el:
                     pod_link = el; used = desc; break
             if not pod_link:
