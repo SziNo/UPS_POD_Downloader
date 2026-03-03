@@ -9,12 +9,21 @@ A program futtatásához szükség van Pythonra és néhány Python‑csomagra. 
 
 1) Python telepítése
 - Nyisd meg: https://www.python.org/downloads
-- Kattints a Download Python 3.x gombra
-- A telepítő első képernyőjén pipáld be: Add Python to PATH
+- Itt van egy nagy sárga 'Download Python install manager' gomb, NE ERRE KATTINTS!
+  Hanem kattints alatta az 'Or get the standalone installer for Python 3.14.3' linkre.
+- A telepítő első képernyőjén pipáld be: Add Python.exe to PATH
   Ez nagyon fontos, mert ettől fog működni a python és pip parancs PowerShellben.
 - Kattints: Install Now
 
-2) Szükséges Python csomagok telepítése
+2) Ellenőrzés
+PowerShellben futtasd:
+
+python --version
+pip --version
+
+Ha mindkettő verziószámot ír ki, akkor minden rendben, és a program futtatható.
+
+3) Szükséges Python csomagok telepítése
 A Python telepítése után nyiss egy PowerShell ablakot, és futtasd:
 
 pip install pandas selenium openpyxl
@@ -23,14 +32,6 @@ Ha régebbi a Pythonod (3.10 vagy alatta), akkor:
 
 pip install pandas==2.3.3 openpyxl==3.1.5 selenium==4.41.0
 
-3) Ellenőrzés
-PowerShellben futtasd:
-
-python --version
-pip --version
-
-Ha mindkettő verziószámot ír ki, akkor minden rendben, és a program futtatható.
-
 ----------------------------------------------------------------
 GYORS ELLENŐRZŐ LISTA HASZNÁLAT ELŐTT:
 ----------------------------------------------------------------
@@ -38,7 +39,7 @@ GYORS ELLENŐRZŐ LISTA HASZNÁLAT ELŐTT:
 [ ] Csomagok telepítve? (pip list | findstr pandas)
 [ ] Chrome böngésző telepítve?
 [ ] Bejelentkeztél UPS-be?
-[ ] Az Excel-ben megvannak a megfelelő oszlopok?
+[ ] Az Excel-ben megvannak a megfelelő oszlopok? (Tracking Number, összefűz)
 [ ] A .ps1 fájlon feloldottad a tiltást? (Properties → Unblock)
 
 ----------------------------------------------------------------
@@ -46,10 +47,11 @@ EXCEL FÁJL ELŐKÉSZÍTÉSE:
 ----------------------------------------------------------------
 Az Excel fájlnak tartalmaznia kell az alábbi oszlopokat:
 - "Tracking Number" → a nyomkövetési számok
-- "összefüz" → a letöltött fájlok végső neve (pl. számlaszám)
-- "POD feltöltve" → ha üres, feldolgozzuk; ha "OK", kihagyjuk
+- "összefűz" → a letöltött fájlok végső neve (ű-VEL!)
+- "Date", "Carton No", "MO" → ezeket a program nem módosítja, csak ellenőrzi
 
 Fontos: A program mindig az első munkalapot olvassa!
+Ha több munkalap van, a megfelelőt kézzel kell az első helyre mozgatni.
 
 ----------------------------------------------------------------
 PROGRAM FUTTATÁSA:
@@ -58,27 +60,31 @@ PROGRAM FUTTATÁSA:
 2. Válaszd: "Run with PowerShell"
 3. Ha figyelmeztetést kapsz, írd be: Y (igen)
 4. A megjelenő ablakban:
-   a) UPS URL: illeszd be a kimásolt linket
+   a) UPS URL: illeszd be a kimásolt linket (ahol már be vagy jelentkezve, ha bejelentkezés után volt felugróablak, akkor azt zárd be!)
    b) Excel fájl: tallózással válaszd ki
    c) Letöltési mappa: tallózással válaszd ki
 5. Kattints a "Letöltés indítása" gombra
-6. Figyeld a naplót - látni fogod a folyamatot
+6. FIGYELD A NAPLÓT - a program jelzi, ha egy sor már ki van töltve (kihagyja)
 7. Ha kész, az Excel fájl frissül (új fájlként mentve: *_FELDOLGOZOTT.xlsx)
 
 ----------------------------------------------------------------
 MIT CSINÁL A PROGRAM?
 ----------------------------------------------------------------
 - Beolvassa az Excel első lapját
-- Csak azokat a sorokat dolgozza fel, ahol a "POD feltöltve" üres
-- Minden tracking számhoz:
+- Ellenőrzi az A–E oszlopokat (Date → összefűz): ha már van bennük kitöltés, kihagyja
+- Csak azokat a sorokat dolgozza fel, ahol:
+  * Van Tracking Number és összefűz érték
+  * ÉS az A–E oszlopok teljesen üresek (nincs színezés)
+- Minden ilyen tracking számhoz:
   * Megnyitja az UPS oldalt
   * Beírja a tracking számot
   * Rákattint a Track gombra
+  * Ha felugrik a chat, automatikusan bezárja
   * Megkeresi a "Proof of Delivery" linket
-  * Letölti a PDF-et
-  * Átnevezi az "összefüz" oszlop értékére
-  * Beállítja a "POD feltöltve" = "OK" értéket
-- Végül elmenti a frissített Excel-t zöld háttérrel
+  * Letölti a PDF-et (a Chrome print ablakot automatikusan kezeli)
+  * Átnevezi az "összefűz" oszlop értékére
+  * ZÖLDRE SZÍNEZI (#92D050) az A–E oszlopokat (Date, Carton No, MO, Tracking Number, összefűz)
+- Végül elmenti a frissített Excel-t (az eredeti fájl változatlan marad)
 
 ----------------------------------------------------------------
 HIBAELHÁRÍTÁS:
@@ -87,3 +93,4 @@ HIBAELHÁRÍTÁS:
   "Unblock"/"Tiltás feloldása" checkbox, pipáld be!
 - Ha a böngésző nem indul: ellenőrizd, hogy Chrome telepítve van-e
 - Ha a letöltés elakad: lehet, hogy a UPS oldala változott
+- Ha a script kihagy sorokat: ellenőrizd, hogy az A–E oszlopokban nincs-e véletlen kitöltés
