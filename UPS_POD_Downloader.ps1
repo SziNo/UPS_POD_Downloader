@@ -239,7 +239,7 @@ $startButton.Add_Click({
     Write-Log "UPS URL: $url"
     Write-Log ""
     
-    # Python script – webdriver-manager, cookie kezelés, bejelentkezés
+    # Python script – webdriver-manager, pontos OneTrust cookie kezelés, bejelentkezés
     $pythonScript = @'
 import sys
 import pandas as pd
@@ -339,30 +339,43 @@ def handle_chrome_print(driver):
         log_error("Hiba a print ablak kezelesekor", str(e))
 
 def accept_cookies(driver):
-    """Cookie-k automatikus elfogadása többféle nyelvi verzióban."""
+    """Cookie-k automatikus elfogadása - OneTrust CMP specifikus"""
     try:
-        cookie_selectors = [
-            "//button[contains(text(),'Cookie')]",
-            "//button[contains(text(),'Elfogad')]",
-            "//button[contains(text(),'Accept')]",
-            "//button[contains(text(),'Süti')]",
-            "//button[contains(@class,'cookie')]",
-            "//button[contains(@id,'cookie')]",
-            "[id*='cookie'] button",
-            "[class*='cookie'] button"
-        ]
+        # Első próbálkozás: "Allow All" gomb (ID alapján)
+        try:
+            allow_all_btn = WebDriverWait(driver, 3).until(
+                EC.element_to_be_clickable((By.ID, "accept-recommended-btn-handler"))
+            )
+            allow_all_btn.click()
+            log_success("Cookie-k elfogadva (Allow All gomb)")
+            time.sleep(1)
+            return True
+        except:
+            pass
         
-        for selector in cookie_selectors:
-            try:
-                cookie_btn = WebDriverWait(driver, 2).until(
-                    EC.element_to_be_clickable((By.XPATH, selector))
-                )
-                cookie_btn.click()
-                log_success("Cookie-k elfogadva")
-                time.sleep(1)
-                return True
-            except:
-                continue
+        # Második próbálkozás: "Confirm My Choices" gomb (class alapján)
+        try:
+            confirm_btn = WebDriverWait(driver, 2).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, ".save-preference-btn-handler"))
+            )
+            confirm_btn.click()
+            log_success("Cookie-k elfogadva (Confirm My Choices gomb)")
+            time.sleep(1)
+            return True
+        except:
+            pass
+        
+        # Harmadik próbálkozás: bezáró gomb (X)
+        try:
+            close_btn = WebDriverWait(driver, 2).until(
+                EC.element_to_be_clickable((By.ID, "close-pc-btn-handler"))
+            )
+            close_btn.click()
+            log_success("Cookie ablak bezárva (X gomb)")
+            time.sleep(1)
+            return True
+        except:
+            pass
         
         log_step("Cookie", "Nincs cookie elfogado ablak vagy mar elfogadva")
         return False
@@ -373,15 +386,16 @@ def accept_cookies(driver):
 def login_if_needed(driver):
     """
     Bejelentkezés automatizálása, ha szükséges.
-    IDE ÍRD BE A TESZTELÉSHEZ A FELHASZNÁLÓNEVED ÉS JELSZAVAD!
     """
     try:
-        # Ellenőrizzük, hogy van-e "Sign in" vagy "Bejelentkezés" gomb
+        # Többféle "Bejelentkezés" gomb keresése
         sign_in_selectors = [
             "//a[contains(text(),'Sign in')]",
+            "//a[contains(text(),'Log in')]",
             "//a[contains(text(),'Bejelentkezés')]",
             "//a[contains(@href,'/account/login')]",
-            "//button[contains(text(),'Sign in')]"
+            "//button[contains(text(),'Sign in')]",
+            "//button[contains(text(),'Log in')]"
         ]
         
         sign_in_btn = None
@@ -390,6 +404,7 @@ def login_if_needed(driver):
                 sign_in_btn = WebDriverWait(driver, 2).until(
                     EC.element_to_be_clickable((By.XPATH, selector))
                 )
+                log_step("Login", f"Bejelentkezes gomb talalva: {selector}")
                 break
             except:
                 continue
@@ -525,7 +540,7 @@ def main():
         time.sleep(3)
         log_success("Oldal betoltve")
         
-        # COOKIE-K ELFOGADÁSA
+        # COOKIE-K ELFOGADÁSA (OneTrust specifikus)
         accept_cookies(driver)
         
         # BEJELENTKEZÉS HA KELL
