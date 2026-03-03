@@ -8,7 +8,7 @@ Add-Type -AssemblyName System.Drawing
 # GUI létrehozása
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "UPS POD Letöltő"
-$form.Size = New-Object System.Drawing.Size(650, 700)  # Kicsit nagyobb a stop gomb miatt
+$form.Size = New-Object System.Drawing.Size(650, 700)
 $form.StartPosition = "CenterScreen"
 $form.BackColor = "White"
 
@@ -159,28 +159,26 @@ $form.Controls.Add($logBox)
 # Progress bar
 $progressBar = New-Object System.Windows.Forms.ProgressBar
 $progressBar.Location = New-Object System.Drawing.Point(10, 540)
-$progressBar.Size = New-Object System.Drawing.Size(280, 25)  # Kisebb, hogy elférjen mellette a stop gomb
+$progressBar.Size = New-Object System.Drawing.Size(280, 25)
 $form.Controls.Add($progressBar)
 
 # ============================================
-# STOP GOMB - ÚJ!
+# STOP GOMB
 # ============================================
 $script:stopRequested = $false
 $script:pythonProcess = $null
 
 $stopButton = New-Object System.Windows.Forms.Button
-$stopButton.Location = New-Object System.Drawing.Point(300, 540)  # Progress bar mellett
+$stopButton.Location = New-Object System.Drawing.Point(300, 540)
 $stopButton.Size = New-Object System.Drawing.Size(90, 25)
 $stopButton.Text = "🛑 Megállítás"
 $stopButton.BackColor = "Orange"
 $stopButton.ForeColor = "White"
 $stopButton.Font = New-Object System.Drawing.Font("Arial", 9, [System.Drawing.FontStyle]::Bold)
-$stopButton.Enabled = $false  # Kezdetben tiltva, csak futás közben aktív
+$stopButton.Enabled = $false
 $stopButton.Add_Click({
     $script:stopRequested = $true
     Write-Log "⚠️ Leállítás kérve... (a következő tracking után leáll)"
-    
-    # Ha van futó Python folyamat, jelzőfájlt hozunk létre
     if ($script:pythonProcess -and !$script:pythonProcess.HasExited) {
         $stopFilePath = Join-Path $env:TEMP "ups_pod_stop.txt"
         Set-Content -Path $stopFilePath -Value "stop" -Force
@@ -199,7 +197,6 @@ $startButton.ForeColor = "White"
 $startButton.Font = New-Object System.Drawing.Font("Arial", 9, [System.Drawing.FontStyle]::Bold)
 $form.Controls.Add($startButton)
 
-# Függvény a naplózáshoz
 function Write-Log {
     param($Message)
     $logBox.AppendText($Message + "`r`n")
@@ -210,39 +207,27 @@ function Write-Log {
 # Indítás gomb eseménykezelő
 $startButton.Add_Click({
     $startButton.Enabled = $false
-    $stopButton.Enabled = $true  # Stop gomb engedélyezése
+    $stopButton.Enabled = $true
     $script:stopRequested = $false
     
-    # Régi stop jelzőfájl törlése, ha van
     $stopFilePath = Join-Path $env:TEMP "ups_pod_stop.txt"
-    if (Test-Path $stopFilePath) {
-        Remove-Item $stopFilePath -Force
-    }
+    if (Test-Path $stopFilePath) { Remove-Item $stopFilePath -Force }
     
     $url = $urlBox.Text.Trim()
     $excelPath = $excelBox.Text.Trim()
     $downloadFolder = $folderBox.Text.Trim()
     
-    # Ellenőrzések
     if (-not $url) {
         [System.Windows.Forms.MessageBox]::Show("Add meg az UPS URL-t!", "Hiba", "OK", "Error")
-        $startButton.Enabled = $true
-        $stopButton.Enabled = $false
-        return
+        $startButton.Enabled = $true; $stopButton.Enabled = $false; return
     }
-    
     if (-not $excelPath -or -not (Test-Path $excelPath)) {
         [System.Windows.Forms.MessageBox]::Show("Érvényes Excel fájlt kell kiválasztani!", "Hiba", "OK", "Error")
-        $startButton.Enabled = $true
-        $stopButton.Enabled = $false
-        return
+        $startButton.Enabled = $true; $stopButton.Enabled = $false; return
     }
-    
     if (-not $downloadFolder -or -not (Test-Path $downloadFolder)) {
         [System.Windows.Forms.MessageBox]::Show("Érvényes letöltési mappát kell kiválasztani!", "Hiba", "OK", "Error")
-        $startButton.Enabled = $true
-        $stopButton.Enabled = $false
-        return
+        $startButton.Enabled = $true; $stopButton.Enabled = $false; return
     }
     
     Write-Log "==========================================="
@@ -254,7 +239,7 @@ $startButton.Add_Click({
     Write-Log "UPS URL: $url"
     Write-Log ""
     
-    # Python script létrehozása ideiglenes fájlban - FRISSÍTETT VERZIÓ STOP TÁMOGATÁSSAL
+    # Python script – frissített verzió chat kezeléssel
     $pythonScript = @'
 import sys
 import pandas as pd
@@ -268,42 +253,25 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, WebDriverException
 
-# STOP fájl ellenőrzéséhez
 STOP_FILE = os.path.join(os.environ['TEMP'], 'ups_pod_stop.txt')
 
 def should_stop():
-    """Ellenőrzi, hogy kérték-e a leállítást"""
     return os.path.exists(STOP_FILE)
 
 def log_message(msg):
-    """Üzenet küldése a PowerShell-nek"""
-    print(f"LOG: {msg}")
-    sys.stdout.flush()
-
+    print(f"LOG: {msg}"); sys.stdout.flush()
 def log_error(msg, details=""):
-    """Hibaüzenet küldése"""
     print(f"LOG: ❌ {msg}")
-    if details:
-        print(f"LOG:   🔍 {details}")
+    if details: print(f"LOG:   🔍 {details}")
     sys.stdout.flush()
-
 def log_success(msg):
-    """Sikeres művelet jelzése"""
-    print(f"LOG: ✅ {msg}")
-    sys.stdout.flush()
-
+    print(f"LOG: ✅ {msg}"); sys.stdout.flush()
 def log_step(step, msg):
-    """Lépés jelzése"""
-    print(f"LOG:   📍 [{step}] {msg}")
-    sys.stdout.flush()
-
+    print(f"LOG:   📍 [{step}] {msg}"); sys.stdout.flush()
 def update_progress(current, total):
-    """Progress frissítése"""
-    print(f"PROGRESS: {current},{total}")
-    sys.stdout.flush()
+    print(f"PROGRESS: {current},{total}"); sys.stdout.flush()
 
 def check_element(driver, by, selector, timeout=5, description=""):
-    """Elem keresése részletes hibanaplózással"""
     try:
         element = WebDriverWait(driver, timeout).until(
             EC.presence_of_element_located((by, selector))
@@ -317,64 +285,100 @@ def check_element(driver, by, selector, timeout=5, description=""):
         log_error(f"Hiba a kereséskor: {description}", str(e))
         return None
 
+def close_chat_if_present(driver):
+    """Bezárja az UPS Assistant chat ablakot, ha megjelenik."""
+    try:
+        # Megnézzük, van‑e chat konténer
+        chat = driver.find_elements(By.CSS_SELECTOR, "div.WACBotContainer")
+        if not chat:
+            return
+        log_step("Chat", "UPS Assistant chat észlelve, bezárás...")
+        # Bezárás gomb (kuka / X) – a te HTML‑ed alapján az End chat and close gomb
+        close_btn = WebDriverWait(driver, 3).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, "button.WACHeader__CloseAndRestartButton"))
+        )
+        close_btn.click()
+        time.sleep(1)
+        # Megerősítő modal "Yes" gomb
+        yes_btn = WebDriverWait(driver, 3).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, "button.WACConfirmModal__YesButton"))
+        )
+        yes_btn.click()
+        log_success("Chat bezárva")
+        time.sleep(1)
+    except Exception as e:
+        log_step("Chat", f"Nem sikerült bezárni a chatet: {str(e)}")
+
+def handle_chrome_print(driver):
+    """Kezeli a Chrome print ablakot – shadow DOM miatt különleges."""
+    try:
+        # Váltás a print ablakra
+        main = driver.current_window_handle
+        for handle in driver.window_handles:
+            if handle != main:
+                driver.switch_to.window(handle)
+                break
+        log_step("Print", "Print ablakba váltottunk")
+        time.sleep(2)
+
+        # Shadow DOM‑os cr‑button kezelése JavaScript segítségével
+        script = """
+        const printBtn = document.querySelector('cr-button.action-button');
+        if (printBtn) {
+            printBtn.click();
+            return true;
+        }
+        return false;
+        """
+        clicked = driver.execute_script(script)
+        if clicked:
+            log_success("Print gomb megnyomva (shadow DOM)")
+        else:
+            log_error("Print gomb nem található shadow DOM‑ban")
+        time.sleep(2)
+
+        # Vissza a főablakra
+        driver.switch_to.window(main)
+    except Exception as e:
+        log_error("Hiba a print ablak kezelésekor", str(e))
+
 def main():
-    # Argumentumok beolvasása
     if len(sys.argv) < 4:
-        log_error("Hiányzó argumentumok")
-        return 1
-    
+        log_error("Hiányzó argumentumok"); return 1
     ups_url = sys.argv[1]
     excel_path = sys.argv[2]
     download_folder = sys.argv[3]
-    
-    log_message("=" * 60)
-    log_message("🔧 PYTHON SCRIPT FUT")
-    log_message("=" * 60)
+
+    log_message("="*60)
+    log_message("🔧 PYTHON SCRIPT FUT"); log_message("="*60)
     log_message(f"📂 Excel: {excel_path}")
     log_message(f"📁 Mappa: {download_folder}")
-    log_message(f"🌐 URL: {ups_url}")
-    log_message("")
-    
-    # =========================================
-    # 1. LÉPÉS: Excel beolvasása
-    # =========================================
+    log_message(f"🌐 URL: {ups_url}\n")
+
+    # 1. Excel olvasás
     log_message("📊 [1/5] Excel fájl beolvasása...")
     try:
         df = pd.read_excel(excel_path, sheet_name=0)
         log_success(f"Excel beolvasva - {len(df)} sor, oszlopok: {list(df.columns)}")
-    except FileNotFoundError:
-        log_error("Excel fájl nem található", f"Útvonal: {excel_path}")
-        return 1
     except Exception as e:
-        log_error("Excel olvasási hiba", str(e))
-        return 1
-    
-    # Szükséges oszlopok ellenőrzése
+        log_error("Excel olvasási hiba", str(e)); return 1
+
     required = ['Tracking Number', 'összefüz', 'POD feltöltve']
-    missing = [col for col in required if col not in df.columns]
+    missing = [c for c in required if c not in df.columns]
     if missing:
-        log_error("Hiányzó oszlopok", f"Kell: {required}, Hiányzik: {missing}")
-        return 1
-    
-    # Feldolgozandó sorok szűrése
+        log_error("Hiányzó oszlopok", f"Kell: {required}, Hiányzik: {missing}"); return 1
+
     to_process = df[df['POD feltöltve'].isna() | (df['POD feltöltve'] == '')]
     total = len(to_process)
-    
     if total == 0:
-        log_message("ℹ️ Nincs feldolgozandó sor.")
-        return 0
-    
+        log_message("ℹ️ Nincs feldolgozandó sor."); return 0
     log_success(f"Feldolgozandó sorok: {total}")
     update_progress(0, total)
     log_message("")
-    
-    # =========================================
-    # 2. LÉPÉS: Böngésző indítása
-    # =========================================
+
+    # 2. Böngésző indítás
     log_message("🌐 [2/5] Böngésző indítása...")
     chrome_options = Options()
-    
-    # Letöltési beállítások
     prefs = {
         "download.default_directory": download_folder,
         "download.prompt_for_download": False,
@@ -386,368 +390,190 @@ def main():
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option('useAutomationExtension', False)
-    
-    # Chrome profil használata
+
     user_data_dir = os.path.join(os.environ['USERPROFILE'], 'AppData', 'Local', 'Google', 'Chrome', 'User Data')
     if os.path.exists(user_data_dir):
         chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
         chrome_options.add_argument("--profile-directory=Default")
         log_step("Profil", "Meglévő Chrome profil betöltve")
-    
+
     try:
         driver = webdriver.Chrome(options=chrome_options)
         log_success("Böngésző sikeresen elindult")
-    except WebDriverException as e:
-        log_error("Böngésző indítási hiba", 
-                  "Ellenőrizd: Chrome telepítve van? A driver verzió megfelelő?")
-        return 1
-    
+    except Exception as e:
+        log_error("Böngésző indítási hiba", str(e)); return 1
+
     try:
-        # UPS oldal megnyitása
-        log_step("Oldal", f"Megnyitás: {ups_url}")
         driver.get(ups_url)
         time.sleep(3)
-        log_success("Oldal betöltve")
-        log_message("")
-        
+        log_success("Oldal betöltve\n")
+
         processed = 0
         success_count = 0
-        
-        # =========================================
-        # 3. LÉPÉS: Tracking számok feldolgozása
-        # =========================================
+
         for idx, row in to_process.iterrows():
-            # Ellenőrizzük, hogy kérték-e a leállítást
             if should_stop():
-                log_message("⚠️ Leállítási kérés észlelve (STOP fájl)")
-                log_message("   A folyamat megszakítása a felhasználó kérésére...")
-                # STOP fájl törlése
-                if os.path.exists(STOP_FILE):
-                    os.remove(STOP_FILE)
-                break
-            
+                log_message("⚠️ Leállítási kérés észlelve..."); break
+
             tracking = str(row['Tracking Number']).strip()
             new_name = str(row['összefüz']).strip()
-            
+
             log_message("")
-            log_message("─" * 50)
+            log_message("─"*50)
             log_message(f"📦 Feldolgozás: {tracking} -> {new_name}")
-            log_message("─" * 50)
-            
-            # =========================================
-            # 3a. Tracking szám mező keresése és kitöltése
-            # =========================================
+            log_message("─"*50)
+
+            # 3a. Tracking mező
             log_step("3a", "Tracking szám mező keresése...")
-            
-            # TÖBBSZÖRÖS SELECTOR PRÓBÁLKOZÁS
-            tracking_selectors = [
-                (By.ID, "st_app_trackingnumber", "ID: st_app_trackingnumber"),
+            track_selectors = [
                 (By.ID, "stApp_trackingNumber", "ID: stApp_trackingNumber"),
-                (By.NAME, "trackingnumber", "NAME: trackingnumber"),
                 (By.CSS_SELECTOR, "textarea[formcontrolname='trackingNumber']", "Angular form control"),
-                (By.CSS_SELECTOR, "textarea.ups-textbox_textarea", "Class: ups-textbox_textarea"),
-                (By.CSS_SELECTOR, "input[placeholder*='Tracking']", "Placeholder: Tracking"),
-                (By.CSS_SELECTOR, "[aria-label*='track']", "ARIA label"),
-                (By.XPATH, "//textarea[contains(@id, 'tracking')]", "XPATH: ID tartalmaz tracking")
+                (By.CSS_SELECTOR, "textarea.ups-textbox_textarea", "Class"),
+                (By.NAME, "trackingnumber", "NAME")
             ]
-            
             track_input = None
-            selector_used = ""
-            for by, selector, desc in tracking_selectors:
-                element = check_element(driver, by, selector, timeout=3, description=desc)
-                if element:
-                    track_input = element
-                    selector_used = desc
-                    break
-            
+            used = ""
+            for by, sel, desc in track_selectors:
+                el = check_element(driver, by, sel, 3, desc)
+                if el:
+                    track_input = el; used = desc; break
             if not track_input:
-                log_error("Tracking szám mező nem található", 
-                         "Az UPS oldala változott - ellenőrizd a selectorokat")
-                # DEBUG: Oldal forrásának mentése
-                with open("debug_page.html", "w", encoding="utf-8") as f:
-                    f.write(driver.page_source)
-                log_step("Debug", "Oldal forrása elmentve: debug_page.html")
-                continue
-            
-            # Tracking szám beírása
-            try:
-                track_input.clear()
-                track_input.send_keys(tracking)
-                log_success(f"Tracking szám beírva (selector: {selector_used})")
-                time.sleep(1)
-            except Exception as e:
-                log_error("Nem sikerült beírni a tracking számot", str(e))
-                continue
-            
-            # =========================================
-            # 3b. Track gomb keresése és kattintás
-            # =========================================
+                log_error("Tracking mező nem található"); continue
+            track_input.clear(); track_input.send_keys(tracking)
+            log_success(f"Tracking szám beírva ({used})")
+            time.sleep(1)
+
+            # 3b. Track gomb
             log_step("3b", "Track gomb keresése...")
-            
-            track_button_selectors = [
-                (By.ID, "st_app_track_package_btn", "ID: st_app_track_package_btn"),
-                (By.ID, "stApp_trackButton", "ID: stApp_trackButton"),
+            btn_selectors = [
+                (By.ID, "stApp_btnTrack", "ID: stApp_btnTrack"),
                 (By.XPATH, "//button[contains(text(),'Track')]", "Szöveg: Track"),
-                (By.XPATH, "//button[contains(text(),'Követés')]", "Szöveg: Követés"),
-                (By.CSS_SELECTOR, "button[type='submit']", "Type: submit"),
-                (By.CSS_SELECTOR, "button.ups-button_primary", "Class: ups-button_primary")
+                (By.CSS_SELECTOR, "button[type='submit']", "Type submit")
             ]
-            
             track_btn = None
-            selector_used = ""
-            for by, selector, desc in track_button_selectors:
-                element = check_element(driver, by, selector, timeout=3, description=desc)
-                if element and element.is_enabled():
-                    track_btn = element
-                    selector_used = desc
-                    break
-            
+            for by, sel, desc in btn_selectors:
+                el = check_element(driver, by, sel, 3, desc)
+                if el and el.is_enabled():
+                    track_btn = el; used = desc; break
             if not track_btn:
-                log_error("Track gomb nem található", "Az UPS oldala változott")
-                continue
-            
-            try:
-                track_btn.click()
-                log_success(f"Track gomb megnyomva (selector: {selector_used})")
-                time.sleep(4)
-            except Exception as e:
-                log_error("Nem sikerült a Track gombra kattintani", str(e))
-                continue
-            
-            # =========================================
-            # 3c. Proof of Delivery link keresése
-            # =========================================
+                log_error("Track gomb nem található"); continue
+            track_btn.click()
+            log_success(f"Track gomb megnyomva ({used})")
+
+            # 3c. Chat kezelése ha felugrik (párhuzamosan a POD link várakozásával)
+            close_chat_if_present(driver)
+
+            # 3d. POD link keresése (akár a chat után, akár előtte jön)
             log_step("3c", "Proof of Delivery link keresése...")
-            
             pod_selectors = [
-                (By.LINK_TEXT, "Proof of Delivery", "Link szöveg: Proof of Delivery"),
-                (By.PARTIAL_LINK_TEXT, "Proof", "Részleges szöveg: Proof"),
-                (By.XPATH, "//a[contains(text(),'Proof')]", "XPATH: szöveg tartalmaz Proof"),
-                (By.CSS_SELECTOR, "a[href*='proof']", "HREF tartalmaz proof"),
-                (By.XPATH, "//a[contains(@class, 'pod-link')]", "Class: pod-link")
+                (By.ID, "stApp_btnProofOfDeliveryonDetails", "ID: stApp_btnProofOfDeliveryonDetails"),
+                (By.LINK_TEXT, "Proof of Delivery", "Link szöveg"),
+                (By.PARTIAL_LINK_TEXT, "Proof", "Részleges")
             ]
-            
             pod_link = None
-            selector_used = ""
-            for by, selector, desc in pod_selectors:
-                element = check_element(driver, by, selector, timeout=5, description=desc)
-                if element:
-                    pod_link = element
-                    selector_used = desc
-                    break
-            
+            for by, sel, desc in pod_selectors:
+                el = check_element(driver, by, sel, 10, desc)  # itt 10 mp timeout
+                if el:
+                    pod_link = el; used = desc; break
             if not pod_link:
-                log_error("Proof of Delivery link nem található", 
-                         "Lehet, hogy nincs POD ehhez a csomaghoz")
-                continue
-            
-            # Főablak azonosítója
+                log_error("POD link nem található"); continue
+
             main_window = driver.current_window_handle
-            
-            try:
-                pod_link.click()
-                log_success(f"POD link megnyitva (selector: {selector_used})")
-                time.sleep(2)
-            except Exception as e:
-                log_error("Nem sikerült a POD linkre kattintani", str(e))
-                continue
-            
-            # =========================================
-            # 3d. Új ablakra váltás
-            # =========================================
+            pod_link.click()
+            log_success(f"POD link megnyitva ({used})")
+
+            # 3e. Új ablakra váltás
             log_step("3d", "Ablakváltás...")
             try:
-                all_windows = driver.window_handles
-                if len(all_windows) > 1:
-                    for window in all_windows:
-                        if window != main_window:
-                            driver.switch_to.window(window)
-                            break
-                    log_success(f"Új ablakra váltva ({len(all_windows)} ablak nyitva)")
-                else:
-                    log_step("Ablak", "Nincs új ablak, maradunk a főablakban")
+                WebDriverWait(driver, 5).until(lambda d: len(d.window_handles) > 1)
+                for w in driver.window_handles:
+                    if w != main_window:
+                        driver.switch_to.window(w); break
+                log_success("Új ablakra váltva")
                 time.sleep(2)
-            except Exception as e:
-                log_error("Ablakváltási hiba", str(e))
-            
-            # =========================================
-            # 3e. Print this page link keresése
-            # =========================================
-            log_step("3e", "Print this page link keresése...")
-            
-            print_selectors = [
-                (By.LINK_TEXT, "Print this page", "Link szöveg: Print this page"),
-                (By.PARTIAL_LINK_TEXT, "Print", "Részleges szöveg: Print"),
-                (By.XPATH, "//a[contains(text(),'Print')]", "XPATH: szöveg tartalmaz Print"),
-                (By.ID, "printLink", "ID: printLink"),
-                (By.CSS_SELECTOR, "button[onclick*='print']", "Gomb onclick tartalmaz print")
-            ]
-            
-            print_link = None
-            selector_used = ""
-            for by, selector, desc in print_selectors:
-                element = check_element(driver, by, selector, timeout=5, description=desc)
-                if element:
-                    print_link = element
-                    selector_used = desc
-                    break
-            
-            if print_link:
-                try:
-                    print_link.click()
-                    log_success(f"Print link megnyitva (selector: {selector_used})")
-                    time.sleep(2)
-                except Exception as e:
-                    log_error("Nem sikerült a Print linkre kattintani", str(e))
-            else:
-                log_step("Print", "Nincs Print link, lehet hogy közvetlen PDF")
-            
-            # =========================================
-            # 3f. Save gomb keresése
-            # =========================================
-            log_step("3f", "Save gomb keresése...")
-            
-            save_selectors = [
-                (By.ID, "save", "ID: save"),
-                (By.XPATH, "//button[contains(text(),'Save')]", "Gomb szöveg: Save"),
-                (By.XPATH, "//input[@value='Save']", "Input value: Save"),
-                (By.CSS_SELECTOR, "button[onclick*='save']", "Onclick tartalmaz save"),
-                (By.XPATH, "//button[contains(@class, 'save')]", "Class tartalmaz save")
-            ]
-            
-            save_btn = None
-            selector_used = ""
-            for by, selector, desc in save_selectors:
-                element = check_element(driver, by, selector, timeout=3, description=desc)
-                if element and element.is_enabled():
-                    save_btn = element
-                    selector_used = desc
-                    break
-            
-            if save_btn:
-                try:
-                    save_btn.click()
-                    log_success(f"Save gomb megnyomva (selector: {selector_used})")
-                    time.sleep(3)
-                except Exception as e:
-                    log_error("Nem sikerült a Save gombra kattintani", str(e))
-            else:
-                log_step("Save", "Nincs Save gomb, lehet hogy automatikus a letöltés")
-            
-            # Visszaváltás a főablakra
-            try:
-                driver.switch_to.window(main_window)
-                log_step("Ablak", "Visszaváltva a főablakra")
             except:
-                pass
-            
-            # =========================================
-            # 3g. Letöltött fájl keresése és átnevezése
-            # =========================================
-            log_step("3g", "Letöltött fájl keresése...")
-            time.sleep(2)
-            
-            try:
-                files = os.listdir(download_folder)
-                pdf_files = [f for f in files if f.lower().endswith('.pdf')]
-                
-                if pdf_files:
-                    # Legutóbb módosított PDF kiválasztása
-                    pdf_files_with_path = [os.path.join(download_folder, f) for f in pdf_files]
-                    latest_pdf = max(pdf_files_with_path, key=os.path.getctime)
-                    
-                    log_step("Fájl", f"Legújabb PDF: {os.path.basename(latest_pdf)}")
-                    
-                    # Átnevezés
-                    new_path = os.path.join(download_folder, f"{new_name}.pdf")
-                    if os.path.exists(new_path):
-                        os.remove(new_path)
-                        log_step("Fájl", "Régi fájl törölve")
-                    
-                    shutil.move(latest_pdf, new_path)
-                    log_success(f"Fájl mentve: {new_name}.pdf")
-                    
-                    # Excel frissítése
-                    df.loc[idx, 'POD feltöltve'] = 'OK'
-                    success_count += 1
-                else:
-                    log_error("Nem található letöltött PDF", 
-                             "Ellenőrizd a letöltési mappát és a Chrome beállításokat")
-                
-            except Exception as e:
-                log_error("Hiba a fájl kezelésekor", str(e))
-            
+                log_step("Ablak", "Nincs új ablak, maradunk")
+
+            # 3f. Print this page
+            log_step("3e", "Print this page keresése...")
+            print_selectors = [
+                (By.ID, "stApp_POD_btnPrint", "ID: stApp_POD_btnPrint"),
+                (By.LINK_TEXT, "Print this page", "Link szöveg")
+            ]
+            print_link = None
+            for by, sel, desc in print_selectors:
+                el = check_element(driver, by, sel, 5, desc)
+                if el:
+                    print_link = el; used = desc; break
+            if print_link:
+                print_link.click()
+                log_success(f"Print link megnyitva ({used})")
+                time.sleep(2)
+
+            # 3g. Print ablak (Chrome) kezelése
+            handle_chrome_print(driver)
+
+            # Vissza a főablakra
+            driver.switch_to.window(main_window)
+
+            # 3h. Letöltött fájl keresése
+            log_step("3f", "Letöltött fájl keresése...")
+            time.sleep(3)
+            files = os.listdir(download_folder)
+            pdfs = [f for f in files if f.lower().endswith('.pdf')]
+            if pdfs:
+                full_paths = [os.path.join(download_folder, f) for f in pdfs]
+                latest = max(full_paths, key=os.path.getctime)
+                new_path = os.path.join(download_folder, f"{new_name}.pdf")
+                if os.path.exists(new_path): os.remove(new_path)
+                shutil.move(latest, new_path)
+                log_success(f"Fájl mentve: {new_name}.pdf")
+                df.loc[idx, 'POD feltöltve'] = 'OK'
+                success_count += 1
+            else:
+                log_error("Nem található letöltött PDF")
+
             processed += 1
             update_progress(processed, total)
             log_success(f"Feldolgozva: {processed}/{total}")
-        
-        # =========================================
-        # 4. LÉPÉS: Excel mentése
-        # =========================================
-        log_message("")
-        log_message("💾 [4/5] Excel fájl mentése...")
-        
-        try:
-            # Eredeti fájl mentése
-            output_path = excel_path.replace('.xlsx', '_FELDOLGOZOTT.xlsx')
-            if output_path == excel_path:
-                output_path = excel_path + '_FELDOLGOZOTT.xlsx'
-            
-            with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
-                df.to_excel(writer, sheet_name='Sheet1', index=False)
-                
-                # Zöld háttér az OK soroknak
-                from openpyxl.styles import PatternFill
-                green_fill = PatternFill(start_color='00FF00', end_color='00FF00', fill_type='solid')
-                
-                worksheet = writer.sheets['Sheet1']
-                for idx, row in df.iterrows():
-                    if row['POD feltöltve'] == 'OK':
-                        excel_row = idx + 2
-                        for col in range(1, len(df.columns) + 1):
-                            cell = worksheet.cell(row=excel_row, column=col)
-                            cell.fill = green_fill
-            
-            log_success(f"Excel mentve: {output_path}")
-            log_message(f"📊 Sikeres letöltések: {success_count}/{total}")
-            
-        except Exception as e:
-            log_error("Excel mentési hiba", str(e))
-            return 1
-        
-        # =========================================
-        # 5. LÉPÉS: Befejezés
-        # =========================================
-        log_message("")
+
+        # 4. Excel mentés
+        log_message("\n💾 [4/5] Excel fájl mentése...")
+        output_path = excel_path.replace('.xlsx', '_FELDOLGOZOTT.xlsx')
+        if output_path == excel_path:
+            output_path = excel_path + '_FELDOLGOZOTT.xlsx'
+        with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name='Sheet1', index=False)
+            from openpyxl.styles import PatternFill
+            green_fill = PatternFill(start_color='00FF00', end_color='00FF00', fill_type='solid')
+            ws = writer.sheets['Sheet1']
+            for idx, row in df.iterrows():
+                if row['POD feltöltve'] == 'OK':
+                    r = idx + 2
+                    for col in range(1, len(df.columns)+1):
+                        ws.cell(row=r, column=col).fill = green_fill
+        log_success(f"Excel mentve: {output_path}")
+        log_message(f"📊 Sikeres: {success_count}/{total}\n")
+
         log_message("✅ [5/5] Folyamat befejezve")
         return 0
-        
     except Exception as e:
-        log_error("Váratlan hiba", str(e))
-        return 1
+        log_error("Váratlan hiba", str(e)); return 1
     finally:
         if driver:
             driver.quit()
             log_message("🟢 Böngésző bezárva")
-        # STOP fájl törlése, ha maradt
-        if os.path.exists(STOP_FILE):
-            os.remove(STOP_FILE)
+        if os.path.exists(STOP_FILE): os.remove(STOP_FILE)
 
 if __name__ == "__main__":
     sys.exit(main())
 '@
     
-    # Ideiglenes Python fájl létrehozása
     $tempPython = [System.IO.Path]::GetTempFileName() + ".py"
-    
-    # UTF-8-BOM mentés
     $utf8WithBom = New-Object System.Text.UTF8Encoding $true
     [System.IO.File]::WriteAllText($tempPython, $pythonScript, $utf8WithBom)
     
     Write-Log "🚀 Python script futtatása..."
-    Write-Log ""
-    
-    # Python futtatása és kimenet olvasása valós időben
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = "python"
     $psi.Arguments = "`"$tempPython`" `"$url`" `"$excelPath`" `"$downloadFolder`""
@@ -760,69 +586,52 @@ if __name__ == "__main__":
     
     $process = New-Object System.Diagnostics.Process
     $process.StartInfo = $psi
-    $script:pythonProcess = $process  # Eltároljuk a folyamatot
+    $script:pythonProcess = $process
     
-    # Eseménykezelők a kimenet olvasásához
     $outputEvent = Register-ObjectEvent -InputObject $process -EventName 'OutputDataReceived' -Action {
         $data = $EventArgs.Data
         if ($data -ne $null) {
             if ($data.StartsWith("LOG: ")) {
                 $message = $data.Substring(5)
                 $form.BeginInvoke([Action]{ Write-Log $message })
-            }
-            elseif ($data.StartsWith("PROGRESS: ")) {
+            } elseif ($data.StartsWith("PROGRESS: ")) {
                 $parts = $data.Substring(10).Split(',')
                 if ($parts.Count -eq 2) {
-                    $current = [int]$parts[0]
-                    $total = [int]$parts[1]
-                    $form.BeginInvoke([Action]{ 
-                        $progressBar.Maximum = $total
-                        $progressBar.Value = $current
-                    })
+                    $current = [int]$parts[0]; $total = [int]$parts[1]
+                    $form.BeginInvoke([Action]{ $progressBar.Maximum = $total; $progressBar.Value = $current })
                 }
             }
         }
     }
-    
     $errorEvent = Register-ObjectEvent -InputObject $process -EventName 'ErrorDataReceived' -Action {
         $data = $EventArgs.Data
-        if ($data -ne $null) {
-            $form.BeginInvoke([Action]{ Write-Log "❌ PYTHON HIBA: $data" })
-        }
+        if ($data -ne $null) { $form.BeginInvoke([Action]{ Write-Log "❌ PYTHON HIBA: $data" }) }
     }
     
-    # Folyamat indítása
     $process.Start() | Out-Null
     $process.BeginOutputReadLine()
     $process.BeginErrorReadLine()
-    
-    # Várakozás a befejeződésre
     $process.WaitForExit()
     $exitCode = $process.ExitCode
-    $script:pythonProcess = $null  # Folyamat eltávolítása
+    $script:pythonProcess = $null
     
-    # Eseménykezelők eltávolítása
     Unregister-Event -SourceIdentifier $outputEvent.Name -Force -ErrorAction SilentlyContinue
     Unregister-Event -SourceIdentifier $errorEvent.Name -Force -ErrorAction SilentlyContinue
-    
-    # Ideiglenes fájl törlése
     Remove-Item $tempPython -Force -ErrorAction SilentlyContinue
     
-    Write-Log ""
-    Write-Log "=" * 50
+    Write-Log ""; Write-Log "="*50
     if ($exitCode -eq 0) {
         Write-Log "✅ FOLYAMAT SIKERESEN BEFEJEZŐDÖTT"
         [System.Windows.Forms.MessageBox]::Show("A letöltés sikeresen befejeződött!", "Siker", "OK", "Information")
     } else {
         Write-Log "❌ HIBA TÖRTÉNT (kód: $exitCode)"
-        Write-Log "   Nézd át a naplót a részletekért!"
-        [System.Windows.Forms.MessageBox]::Show("Hiba történt a letöltés során! Ellenőrizd a naplót.", "Hiba", "OK", "Error")
+        [System.Windows.Forms.MessageBox]::Show("Hiba történt! Ellenőrizd a naplót.", "Hiba", "OK", "Error")
     }
-    Write-Log "=" * 50
+    Write-Log "="*50
     
     $progressBar.Value = 0
     $startButton.Enabled = $true
-    $stopButton.Enabled = $false  # Stop gomb letiltása
+    $stopButton.Enabled = $false
 })
 
 # Kilépés gomb
@@ -833,21 +642,16 @@ $exitButton.Text = "Kilépés"
 $exitButton.BackColor = "DarkRed"
 $exitButton.ForeColor = "White"
 $exitButton.Font = New-Object System.Drawing.Font("Arial", 9, [System.Drawing.FontStyle]::Bold)
-$exitButton.Add_Click({ 
-    # Ha van futó Python folyamat, próbáljuk meg leállítani
+$exitButton.Add_Click({
     if ($script:pythonProcess -and !$script:pythonProcess.HasExited) {
         $stopFilePath = Join-Path $env:TEMP "ups_pod_stop.txt"
         Set-Content -Path $stopFilePath -Value "stop" -Force
-        Write-Log "⚠️ Leállítási jelzés küldve a Python folyamatnak..."
+        Write-Log "⚠️ Leállítási jelzés küldve..."
         Start-Sleep -Seconds 2
-        if (!$script:pythonProcess.HasExited) {
-            $script:pythonProcess.Kill()
-            Write-Log "🛑 Python folyamat kényszerített leállítása"
-        }
+        if (!$script:pythonProcess.HasExited) { $script:pythonProcess.Kill() }
     }
-    $form.Close() 
+    $form.Close()
 })
 $form.Controls.Add($exitButton)
 
-# Form megjelenítése
 $form.ShowDialog()
