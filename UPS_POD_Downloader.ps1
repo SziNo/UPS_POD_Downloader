@@ -239,7 +239,7 @@ $startButton.Add_Click({
     Write-Log "UPS URL: $url"
     Write-Log ""
     
-    # Python script – emojik nélküli verzió, színalapú ellenőrzéssel
+    # Python script – webdriver-manager integrációval
     $pythonScript = @'
 import sys
 import pandas as pd
@@ -251,6 +251,8 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, WebDriverException
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill
@@ -418,14 +420,17 @@ def main():
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option('useAutomationExtension', False)
 
-    user_data_dir = os.path.join(os.environ['USERPROFILE'], 'AppData', 'Local', 'Google', 'Chrome', 'User Data')
-    if os.path.exists(user_data_dir):
-        chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
-        chrome_options.add_argument("--profile-directory=Default")
-        log_step("Profil", "Meglevő Chrome profil betoltve")
+    # Kikommenteztük a felhasználói profil használatát, mert az néha zárolási problémát okoz
+    # user_data_dir = os.path.join(os.environ['USERPROFILE'], 'AppData', 'Local', 'Google', 'Chrome', 'User Data')
+    # if os.path.exists(user_data_dir):
+    #     chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
+    #     chrome_options.add_argument("--profile-directory=Default")
+    #     log_step("Profil", "Meglevő Chrome profil betoltve")
 
     try:
-        driver = webdriver.Chrome(options=chrome_options)
+        # webdriver-manager használata a driver automatikus kezelésére
+        service = Service(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=chrome_options)
         log_success("Bongeszo sikeresen elindult")
     except Exception as e:
         log_error("Bongeszo inditasi hiba", str(e)); return 1
