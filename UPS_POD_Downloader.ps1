@@ -239,7 +239,7 @@ $startButton.Add_Click({
     Write-Log "UPS URL: $url"
     Write-Log ""
     
-    # Python script – teljes cookie kezeléssel (kis banner + nagy OneTrust)
+    # Python script – teljes cookie kezeléssel és pontos bejelentkezéssel
     $pythonScript = @'
 import sys
 import pandas as pd
@@ -341,7 +341,7 @@ def handle_chrome_print(driver):
 def accept_cookies(driver):
     """Cookie-k automatikus elfogadása - kis banner + nagy OneTrust"""
     try:
-        # 1. KIS BANNER (az imént kapott HTML alapján)
+        # 1. KIS BANNER
         banner_selectors = [
             (By.ID, "onetrust-accept-btn-handler", "Allow All Cookies (banner)"),
             (By.ID, "onetrust-reject-all-handler", "Essential Only (banner)"),
@@ -360,7 +360,7 @@ def accept_cookies(driver):
             except:
                 continue
         
-        # 2. NAGY ONETRUST ABLAK (korábbi)
+        # 2. NAGY ONETRUST ABLAK
         big_selectors = [
             (By.ID, "accept-recommended-btn-handler", "Allow All (big)"),
             (By.CSS_SELECTOR, ".save-preference-btn-handler", "Confirm Choices (big)"),
@@ -387,10 +387,10 @@ def accept_cookies(driver):
 
 def login_if_needed(driver):
     """
-    Bejelentkezés automatizálása, ha szükséges.
+    Bejelentkezés automatizálása - pontos selectorokkal a te HTML-ed alapján.
     """
     try:
-        # Többféle "Bejelentkezés" gomb keresése
+        # 1. LÉPÉS: "Log in" gomb keresése
         sign_in_selectors = [
             "//a[contains(text(),'Sign in')]",
             "//a[contains(text(),'Log in')]",
@@ -406,7 +406,7 @@ def login_if_needed(driver):
                 sign_in_btn = WebDriverWait(driver, 2).until(
                     EC.element_to_be_clickable((By.XPATH, selector))
                 )
-                log_step("Login", f"Bejelentkezes gomb talalva: {selector}")
+                log_step("Login", f"Bejelentkezes gomb talalva")
                 break
             except:
                 continue
@@ -417,38 +417,57 @@ def login_if_needed(driver):
             time.sleep(2)
             
             # =====================================================================
-            # !!! IDE ÍRD BE A SAJÁT UPS FELHASZNÁLÓNEVED ÉS JELSZAVAD !!!
+            # !!! IDE ÍRD BE A SAJÁT UPS FELHASZNÁLÓNEVED !!!
             # =====================================================================
-            UPS_USERNAME = "DHLSC2022"   # <-- Ezt cseréld ki
-            UPS_PASSWORD = "APIconnect5483167"          # <-- Ezt cseréld ki
+            UPS_USERNAME = "DHLSC2022"   # <-- Ezt cseréld ki!
+            UPS_PASSWORD = "APIconnect5483167"          # <-- Ezt is cseréld ki!
             # =====================================================================
             
-            # Felhasználónév mező
+            # 2. LÉPÉS: Felhasználónév mező
             username_field = WebDriverWait(driver, 5).until(
-                EC.presence_of_element_located((By.ID, "email"))
+                EC.presence_of_element_located((By.ID, "username"))
             )
             username_field.clear()
             username_field.send_keys(UPS_USERNAME)
             log_step("Login", "Felhasznalonev megadva")
+            time.sleep(1)
             
-            # Jelszó mező
-            password_field = driver.find_element(By.ID, "pwd")
+            # 3. LÉPÉS: "Continue" gomb a felhasználónév után
+            continue_btn = WebDriverWait(driver, 3).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "._button-login-id"))
+            )
+            continue_btn.click()
+            log_step("Login", "Continue gomb megnyomva")
+            time.sleep(2)
+            
+            # 4. LÉPÉS: Jelszó mező
+            password_field = WebDriverWait(driver, 5).until(
+                EC.presence_of_element_located((By.ID, "password"))
+            )
             password_field.clear()
             password_field.send_keys(UPS_PASSWORD)
             log_step("Login", "Jelszo megadva")
+            time.sleep(1)
             
-            # Bejelentkezés gomb
-            login_btn = driver.find_element(By.ID, "submitBtn")
+            # 5. LÉPÉS: "Continue" gomb a jelszó után
+            login_btn = WebDriverWait(driver, 3).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "._button-login-password"))
+            )
             login_btn.click()
             
             log_success("Bejelentkezes sikeres")
             time.sleep(3)
+            
+            # VISSZA A MEGADOTT URL-RE (a tracking oldalra)
+            driver.get(driver.current_url)  # Ez ugyanaz az URL marad, ahol vagyunk
+            time.sleep(2)
+            
             return True
         else:
             log_step("Login", "Mar be van jelentkezve")
             return False
     except Exception as e:
-        log_error("Bejelentkezesi hiba (nem kritikus, lehet mar be van jelentkezve)", str(e))
+        log_error("Bejelentkezesi hiba", str(e))
         return False
 
 def is_row_processed(ws, row_idx):
@@ -542,7 +561,7 @@ def main():
         time.sleep(3)
         log_success("Oldal betoltve")
         
-        # COOKIE-K ELFOGADÁSA (kis banner + nagy ablak)
+        # COOKIE-K ELFOGADÁSA
         accept_cookies(driver)
         
         # BEJELENTKEZÉS HA KELL
