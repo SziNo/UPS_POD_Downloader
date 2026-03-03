@@ -239,7 +239,7 @@ $startButton.Add_Click({
     Write-Log "UPS URL: $url"
     Write-Log ""
     
-    # Python script – webdriver-manager integrációval
+    # Python script – webdriver-manager, cookie kezelés, bejelentkezés
     $pythonScript = @'
 import sys
 import pandas as pd
@@ -258,7 +258,7 @@ from openpyxl import load_workbook
 from openpyxl.styles import PatternFill
 
 STOP_FILE = os.path.join(os.environ['TEMP'], 'ups_pod_stop.txt')
-GREEN_COLOR = '92D050'  # Pontos zöld színkód (R=146, G=208, B=80)
+GREEN_COLOR = '92D050'
 
 def should_stop():
     return os.path.exists(STOP_FILE)
@@ -338,15 +338,110 @@ def handle_chrome_print(driver):
     except Exception as e:
         log_error("Hiba a print ablak kezelesekor", str(e))
 
+def accept_cookies(driver):
+    """Cookie-k automatikus elfogadása többféle nyelvi verzióban."""
+    try:
+        cookie_selectors = [
+            "//button[contains(text(),'Cookie')]",
+            "//button[contains(text(),'Elfogad')]",
+            "//button[contains(text(),'Accept')]",
+            "//button[contains(text(),'Süti')]",
+            "//button[contains(@class,'cookie')]",
+            "//button[contains(@id,'cookie')]",
+            "[id*='cookie'] button",
+            "[class*='cookie'] button"
+        ]
+        
+        for selector in cookie_selectors:
+            try:
+                cookie_btn = WebDriverWait(driver, 2).until(
+                    EC.element_to_be_clickable((By.XPATH, selector))
+                )
+                cookie_btn.click()
+                log_success("Cookie-k elfogadva")
+                time.sleep(1)
+                return True
+            except:
+                continue
+        
+        log_step("Cookie", "Nincs cookie elfogado ablak vagy mar elfogadva")
+        return False
+    except Exception as e:
+        log_step("Cookie", f"Cookie kezelesi hiba (nem kritikus): {str(e)}")
+        return False
+
+def login_if_needed(driver):
+    """
+    Bejelentkezés automatizálása, ha szükséges.
+    IDE ÍRD BE A TESZTELÉSHEZ A FELHASZNÁLÓNEVED ÉS JELSZAVAD!
+    """
+    try:
+        # Ellenőrizzük, hogy van-e "Sign in" vagy "Bejelentkezés" gomb
+        sign_in_selectors = [
+            "//a[contains(text(),'Sign in')]",
+            "//a[contains(text(),'Bejelentkezés')]",
+            "//a[contains(@href,'/account/login')]",
+            "//button[contains(text(),'Sign in')]"
+        ]
+        
+        sign_in_btn = None
+        for selector in sign_in_selectors:
+            try:
+                sign_in_btn = WebDriverWait(driver, 2).until(
+                    EC.element_to_be_clickable((By.XPATH, selector))
+                )
+                break
+            except:
+                continue
+        
+        if sign_in_btn:
+            log_step("Login", "Bejelentkezes szukseges...")
+            sign_in_btn.click()
+            time.sleep(2)
+            
+            # =====================================================================
+            # !!! IDE ÍRD BE A SAJÁT UPS FELHASZNÁLÓNEVED ÉS JELSZAVAD !!!
+            # =====================================================================
+            UPS_USERNAME = "DHLSC2022"   # <-- Ezt cseréld ki
+            UPS_PASSWORD = "APIconnect5483167"          # <-- Ezt cseréld ki
+            # =====================================================================
+            
+            # Felhasználónév mező
+            username_field = WebDriverWait(driver, 5).until(
+                EC.presence_of_element_located((By.ID, "email"))
+            )
+            username_field.clear()
+            username_field.send_keys(UPS_USERNAME)
+            log_step("Login", "Felhasznalonev megadva")
+            
+            # Jelszó mező
+            password_field = driver.find_element(By.ID, "pwd")
+            password_field.clear()
+            password_field.send_keys(UPS_PASSWORD)
+            log_step("Login", "Jelszo megadva")
+            
+            # Bejelentkezés gomb
+            login_btn = driver.find_element(By.ID, "submitBtn")
+            login_btn.click()
+            
+            log_success("Bejelentkezes sikeres")
+            time.sleep(3)
+            return True
+        else:
+            log_step("Login", "Mar be van jelentkezve")
+            return False
+    except Exception as e:
+        log_error("Bejelentkezesi hiba (nem kritikus, lehet mar be van jelentkezve)", str(e))
+        return False
+
 def is_row_processed(ws, row_idx):
-    """Ellenőrzi, hogy a sorban van-e #92D050 szín."""
-    for col in range(1, 6):  # A=1, B=2, C=3, D=4, E=5
+    for col in range(1, 6):
         cell = ws.cell(row=row_idx, column=col)
         if cell.fill and cell.fill.fgColor and cell.fill.fgColor.rgb:
-            color = cell.fill.fgColor.rgb[-6:]  # FF levágása
+            color = cell.fill.fgColor.rgb[-6:]
             if color == GREEN_COLOR:
-                return True  # Már feldolgozva (van zöld)
-    return False  # Még nincs feldolgozva
+                return True
+    return False
 
 def main():
     if len(sys.argv) < 4:
@@ -382,14 +477,12 @@ def main():
 
     to_process_indices = []
     for idx, row in df.iterrows():
-        excel_row = idx + 2  # +2 mert a pandas 0-tól indexel, Excelben van fejléc
+        excel_row = idx + 2
         
-        # Ellenőrizzük, hogy a sor már fel van-e dolgozva (van-e benne zöld)
         if is_row_processed(ws, excel_row):
             log_step("Szures", f"Sor {excel_row} mar fel van dolgozva (zold), kihagyva")
             continue
         
-        # Ellenőrizzük, hogy van-e Tracking Number és összefűz
         tracking = str(row['Tracking Number']).strip() if pd.notna(row['Tracking Number']) else ''
         new_name = str(row['összefűz']).strip() if pd.notna(row['összefűz']) else ''
         
@@ -420,15 +513,7 @@ def main():
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option('useAutomationExtension', False)
 
-    # Kikommenteztük a felhasználói profil használatát, mert az néha zárolási problémát okoz
-    # user_data_dir = os.path.join(os.environ['USERPROFILE'], 'AppData', 'Local', 'Google', 'Chrome', 'User Data')
-    # if os.path.exists(user_data_dir):
-    #     chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
-    #     chrome_options.add_argument("--profile-directory=Default")
-    #     log_step("Profil", "Meglevő Chrome profil betoltve")
-
     try:
-        # webdriver-manager használata a driver automatikus kezelésére
         service = Service(ChromeDriverManager().install())
         driver = webdriver.Chrome(service=service, options=chrome_options)
         log_success("Bongeszo sikeresen elindult")
@@ -438,7 +523,18 @@ def main():
     try:
         driver.get(ups_url)
         time.sleep(3)
-        log_success("Oldal betoltve\n")
+        log_success("Oldal betoltve")
+        
+        # COOKIE-K ELFOGADÁSA
+        accept_cookies(driver)
+        
+        # BEJELENTKEZÉS HA KELL
+        login_if_needed(driver)
+        
+        # Ha esetleg a bejelentkezés után újra kell fogadni a cookie-kat
+        accept_cookies(driver)
+        
+        log_message("")
 
         processed = 0
         success_count = 0
@@ -550,7 +646,6 @@ def main():
                 shutil.move(latest, new_path)
                 log_success(f"Fajl mentve: {new_name}.pdf")
                 
-                # Sor zöldre színezése (A–E oszlopok)
                 for col in range(1, 6):
                     ws.cell(row=excel_row, column=col).fill = zold_fill
                 log_success(f"Sor {excel_row} zoldre szinezve (A-E oszlopok, #{GREEN_COLOR})")
