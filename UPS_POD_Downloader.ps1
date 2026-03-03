@@ -239,7 +239,7 @@ $startButton.Add_Click({
     Write-Log "UPS URL: $url"
     Write-Log ""
     
-    # Python script – webdriver-manager, pontos OneTrust cookie kezelés, bejelentkezés
+    # Python script – teljes cookie kezeléssel (kis banner + nagy OneTrust)
     $pythonScript = @'
 import sys
 import pandas as pd
@@ -339,48 +339,50 @@ def handle_chrome_print(driver):
         log_error("Hiba a print ablak kezelesekor", str(e))
 
 def accept_cookies(driver):
-    """Cookie-k automatikus elfogadása - OneTrust CMP specifikus"""
+    """Cookie-k automatikus elfogadása - kis banner + nagy OneTrust"""
     try:
-        # Első próbálkozás: "Allow All" gomb (ID alapján)
-        try:
-            allow_all_btn = WebDriverWait(driver, 3).until(
-                EC.element_to_be_clickable((By.ID, "accept-recommended-btn-handler"))
-            )
-            allow_all_btn.click()
-            log_success("Cookie-k elfogadva (Allow All gomb)")
-            time.sleep(1)
-            return True
-        except:
-            pass
+        # 1. KIS BANNER (az imént kapott HTML alapján)
+        banner_selectors = [
+            (By.ID, "onetrust-accept-btn-handler", "Allow All Cookies (banner)"),
+            (By.ID, "onetrust-reject-all-handler", "Essential Only (banner)"),
+            (By.ID, "onetrust-pc-btn-handler", "Cookie Settings (banner)")
+        ]
         
-        # Második próbálkozás: "Confirm My Choices" gomb (class alapján)
-        try:
-            confirm_btn = WebDriverWait(driver, 2).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, ".save-preference-btn-handler"))
-            )
-            confirm_btn.click()
-            log_success("Cookie-k elfogadva (Confirm My Choices gomb)")
-            time.sleep(1)
-            return True
-        except:
-            pass
+        for by, selector, description in banner_selectors:
+            try:
+                btn = WebDriverWait(driver, 2).until(
+                    EC.element_to_be_clickable((by, selector))
+                )
+                btn.click()
+                log_success(f"Cookie banner kezelve: {description}")
+                time.sleep(1)
+                return True
+            except:
+                continue
         
-        # Harmadik próbálkozás: bezáró gomb (X)
-        try:
-            close_btn = WebDriverWait(driver, 2).until(
-                EC.element_to_be_clickable((By.ID, "close-pc-btn-handler"))
-            )
-            close_btn.click()
-            log_success("Cookie ablak bezárva (X gomb)")
-            time.sleep(1)
-            return True
-        except:
-            pass
+        # 2. NAGY ONETRUST ABLAK (korábbi)
+        big_selectors = [
+            (By.ID, "accept-recommended-btn-handler", "Allow All (big)"),
+            (By.CSS_SELECTOR, ".save-preference-btn-handler", "Confirm Choices (big)"),
+            (By.ID, "close-pc-btn-handler", "Close X (big)")
+        ]
         
-        log_step("Cookie", "Nincs cookie elfogado ablak vagy mar elfogadva")
+        for by, selector, description in big_selectors:
+            try:
+                btn = WebDriverWait(driver, 2).until(
+                    EC.element_to_be_clickable((by, selector))
+                )
+                btn.click()
+                log_success(f"Cookie ablak kezelve: {description}")
+                time.sleep(1)
+                return True
+            except:
+                continue
+        
+        log_step("Cookie", "Nincs cookie elfogado ablak")
         return False
     except Exception as e:
-        log_step("Cookie", f"Cookie kezelesi hiba (nem kritikus): {str(e)}")
+        log_step("Cookie", f"Cookie hiba: {str(e)}")
         return False
 
 def login_if_needed(driver):
@@ -540,13 +542,13 @@ def main():
         time.sleep(3)
         log_success("Oldal betoltve")
         
-        # COOKIE-K ELFOGADÁSA (OneTrust specifikus)
+        # COOKIE-K ELFOGADÁSA (kis banner + nagy ablak)
         accept_cookies(driver)
         
         # BEJELENTKEZÉS HA KELL
         login_if_needed(driver)
         
-        # Ha esetleg a bejelentkezés után újra kell fogadni a cookie-kat
+        # MÉG EGYSZER COOKIE (ha a bejelentkezés után újra feljönne)
         accept_cookies(driver)
         
         log_message("")
