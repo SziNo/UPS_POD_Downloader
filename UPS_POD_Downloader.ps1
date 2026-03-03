@@ -239,7 +239,7 @@ $startButton.Add_Click({
     Write-Log "UPS URL: $url"
     Write-Log ""
     
-    # Python script – emojik nélküli verzió
+    # Python script – emojik nélküli verzió, színalapú ellenőrzéssel
     $pythonScript = @'
 import sys
 import pandas as pd
@@ -256,7 +256,7 @@ from openpyxl import load_workbook
 from openpyxl.styles import PatternFill
 
 STOP_FILE = os.path.join(os.environ['TEMP'], 'ups_pod_stop.txt')
-GREEN_COLOR = '92D050'
+GREEN_COLOR = '92D050'  # Pontos zöld színkód (R=146, G=208, B=80)
 
 def should_stop():
     return os.path.exists(STOP_FILE)
@@ -336,12 +336,15 @@ def handle_chrome_print(driver):
     except Exception as e:
         log_error("Hiba a print ablak kezelesekor", str(e))
 
-def is_row_empty(ws, row_idx):
-    for col in range(1, 6):
+def is_row_processed(ws, row_idx):
+    """Ellenőrzi, hogy a sorban van-e #92D050 szín."""
+    for col in range(1, 6):  # A=1, B=2, C=3, D=4, E=5
         cell = ws.cell(row=row_idx, column=col)
         if cell.fill and cell.fill.fgColor and cell.fill.fgColor.rgb:
-            return False
-    return True
+            color = cell.fill.fgColor.rgb[-6:]  # FF levágása
+            if color == GREEN_COLOR:
+                return True  # Már feldolgozva (van zöld)
+    return False  # Még nincs feldolgozva
 
 def main():
     if len(sys.argv) < 4:
@@ -377,12 +380,14 @@ def main():
 
     to_process_indices = []
     for idx, row in df.iterrows():
-        excel_row = idx + 2
+        excel_row = idx + 2  # +2 mert a pandas 0-tól indexel, Excelben van fejléc
         
-        if not is_row_empty(ws, excel_row):
-            log_step("Szures", f"Sor {excel_row} mar ki van toltve, kihagyva")
+        # Ellenőrizzük, hogy a sor már fel van-e dolgozva (van-e benne zöld)
+        if is_row_processed(ws, excel_row):
+            log_step("Szures", f"Sor {excel_row} mar fel van dolgozva (zold), kihagyva")
             continue
         
+        # Ellenőrizzük, hogy van-e Tracking Number és összefűz
         tracking = str(row['Tracking Number']).strip() if pd.notna(row['Tracking Number']) else ''
         new_name = str(row['összefűz']).strip() if pd.notna(row['összefűz']) else ''
         
@@ -540,6 +545,7 @@ def main():
                 shutil.move(latest, new_path)
                 log_success(f"Fajl mentve: {new_name}.pdf")
                 
+                # Sor zöldre színezése (A–E oszlopok)
                 for col in range(1, 6):
                     ws.cell(row=excel_row, column=col).fill = zold_fill
                 log_success(f"Sor {excel_row} zoldre szinezve (A-E oszlopok, #{GREEN_COLOR})")
