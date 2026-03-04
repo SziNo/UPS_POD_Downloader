@@ -116,9 +116,7 @@ $folderButton.Add_Click({
 })
 $form.Controls.Add($folderButton)
 
-# ============================================
 # UPS FELHASZNÁLÓNÉV ÉS JELSZÓ
-# ============================================
 $userLabel = New-Object System.Windows.Forms.Label
 $userLabel.Location = New-Object System.Drawing.Point(10, 260)
 $userLabel.Size = New-Object System.Drawing.Size(120, 25)
@@ -192,9 +190,7 @@ $progressBar.Location = New-Object System.Drawing.Point(10, 560)
 $progressBar.Size = New-Object System.Drawing.Size(280, 25)
 $form.Controls.Add($progressBar)
 
-# ============================================
-# STOP GOMB (MEGERŐSÍTVE)
-# ============================================
+# STOP GOMB
 $script:stopRequested = $false
 $script:pythonProcess = $null
 
@@ -316,13 +312,11 @@ $startButton.Add_Click({
     Write-Log "Felhasznalo: $username"
     Write-Log ""
     
-    # Python script – VÉGSŐ VERZIÓ (javított ablakkezeléssel)
     $pythonScript = @'
 import sys
 import pandas as pd
 import time
 import os
-import shutil
 import random
 import base64
 from selenium import webdriver
@@ -357,28 +351,12 @@ def log_step(step, msg):
 def update_progress(current, total):
     print(f"PROGRESS: {current},{total}"); sys.stdout.flush()
 
-def check_element(driver, by, selector, timeout=5, description=""):
-    try:
-        element = WebDriverWait(driver, timeout).until(
-            EC.presence_of_element_located((by, selector))
-        )
-        log_step("Kereses", f"Megtalalva: {description} ({selector})")
-        return element
-    except TimeoutException:
-        log_error(f"Nem talalhato: {description}", f"Selector: {selector}, idotullepes: {timeout}s")
-        return None
-    except Exception as e:
-        log_error(f"Hiba a kereseskor: {description}", str(e))
-        return None
-
 def human_type(element, text):
-    """Emberi gépelést szimuláló függvény"""
     for char in text:
         element.send_keys(char)
         time.sleep(random.uniform(0.05, 0.2))
 
 def human_click(driver, element):
-    """Emberi kattintást szimuláló függvény"""
     actions = ActionChains(driver)
     actions.move_to_element(element)
     time.sleep(random.uniform(0.3, 0.8))
@@ -386,32 +364,29 @@ def human_click(driver, element):
     actions.perform()
 
 def handle_mfa_popup(driver):
-    """MFA / 2FA felugró kezelése - Skip for now"""
     try:
         try:
             skip_btn = WebDriverWait(driver, 3).until(
                 EC.element_to_be_clickable((By.CSS_SELECTOR, "button.af-nextButton"))
             )
-            log_step("MFA", "MFA popup észlelve, Skip for now...")
+            log_step("MFA", "MFA popup eszlelve, Skip for now...")
             human_click(driver, skip_btn)
             log_success("MFA popup kihagyva")
             time.sleep(2)
             return True
         except:
             pass
-        
         try:
             skip_btn = WebDriverWait(driver, 2).until(
                 EC.element_to_be_clickable((By.XPATH, "//button[contains(text(),'Skip for now')]"))
             )
-            log_step("MFA", "MFA popup észlelve, Skip for now...")
+            log_step("MFA", "MFA popup eszlelve, Skip for now...")
             human_click(driver, skip_btn)
-            log_success("MFA popup kihagyva (szöveg alapján)")
+            log_success("MFA popup kihagyva (szoveg alapjan)")
             time.sleep(2)
             return True
         except:
             pass
-        
         log_step("MFA", "Nincs MFA popup")
         return False
     except Exception as e:
@@ -419,7 +394,6 @@ def handle_mfa_popup(driver):
         return False
 
 def close_policy_popup(driver):
-    """Bezárja a 'Make Deliveries Work for You!' felugró ablakot."""
     try:
         popup = driver.find_elements(By.CSS_SELECTOR, "#ups-updateProfile-popup-container")
         if not popup:
@@ -429,17 +403,17 @@ def close_policy_popup(driver):
             EC.element_to_be_clickable((By.CSS_SELECTOR, ".ups-notNowButton"))
         )
         human_click(driver, not_now_btn)
-        log_success("Policy popup bezarva (Not Now)")
+        log_success("Policy popup bezarva")
         time.sleep(1)
     except Exception as e:
-        log_step("Policy", f"Nem sikerult bezarni a policy popupot: {str(e)}")
+        log_step("Policy", f"Policy popup hiba: {str(e)}")
 
 def close_chat_if_present(driver):
     try:
         chat = driver.find_elements(By.CSS_SELECTOR, "div.WACBotContainer")
         if not chat:
             return
-        log_step("Chat", "UPS Assistant chat eszlelve, bezaras...")
+        log_step("Chat", "UPS chat eszlelve, bezaras...")
         close_btn = WebDriverWait(driver, 3).until(
             EC.element_to_be_clickable((By.CSS_SELECTOR, "button.WACHeader__CloseAndRestartButton"))
         )
@@ -452,51 +426,30 @@ def close_chat_if_present(driver):
             human_click(driver, yes_btn)
             log_success("Chat bezarva")
         except:
-            log_success("Chat bezarva (nem kellett megerősítés)")
+            log_success("Chat bezarva (nem kellett megerosites)")
         time.sleep(1)
     except Exception as e:
-        log_step("Chat", f"Nem sikerult bezarni a chatet: {str(e)}")
+        log_step("Chat", f"Chat hiba: {str(e)}")
 
 def accept_cookies(driver):
-    """Cookie-k automatikus elfogadása - kis banner + nagy OneTrust"""
     try:
-        banner_selectors = [
-            (By.ID, "onetrust-accept-btn-handler", "Allow All Cookies (banner)"),
+        for by, selector, description in [
+            (By.ID, "onetrust-accept-btn-handler", "Allow All (banner)"),
             (By.ID, "onetrust-reject-all-handler", "Essential Only (banner)"),
-            (By.ID, "onetrust-pc-btn-handler", "Cookie Settings (banner)")
-        ]
-        
-        for by, selector, description in banner_selectors:
-            try:
-                btn = WebDriverWait(driver, 2).until(
-                    EC.element_to_be_clickable((by, selector))
-                )
-                human_click(driver, btn)
-                log_success(f"Cookie banner kezelve: {description}")
-                time.sleep(1)
-                return True
-            except:
-                continue
-        
-        big_selectors = [
+            (By.ID, "onetrust-pc-btn-handler", "Cookie Settings (banner)"),
             (By.ID, "accept-recommended-btn-handler", "Allow All (big)"),
             (By.CSS_SELECTOR, ".save-preference-btn-handler", "Confirm Choices (big)"),
             (By.ID, "close-pc-btn-handler", "Close X (big)")
-        ]
-        
-        for by, selector, description in big_selectors:
+        ]:
             try:
-                btn = WebDriverWait(driver, 2).until(
-                    EC.element_to_be_clickable((by, selector))
-                )
+                btn = WebDriverWait(driver, 2).until(EC.element_to_be_clickable((by, selector)))
                 human_click(driver, btn)
-                log_success(f"Cookie ablak kezelve: {description}")
+                log_success(f"Cookie kezelve: {description}")
                 time.sleep(1)
                 return True
             except:
                 continue
-        
-        log_step("Cookie", "Nincs cookie elfogado ablak")
+        log_step("Cookie", "Nincs cookie ablak")
         return False
     except Exception as e:
         log_step("Cookie", f"Cookie hiba: {str(e)}")
@@ -504,15 +457,13 @@ def accept_cookies(driver):
 
 def login_if_needed(driver, username, password):
     try:
-        sign_in_selectors = [
+        sign_in_btn = None
+        for selector in [
             "//a[contains(text(),'Sign in')]",
             "//a[contains(text(),'Log in')]",
             "//a[contains(@href,'/account/login')]",
             "//button[contains(text(),'Sign in')]",
-        ]
-        
-        sign_in_btn = None
-        for selector in sign_in_selectors:
+        ]:
             try:
                 sign_in_btn = WebDriverWait(driver, 2).until(
                     EC.element_to_be_clickable((By.XPATH, selector))
@@ -526,7 +477,6 @@ def login_if_needed(driver, username, password):
             return False
 
         log_step("Login", "Bejelentkezes szukseges...")
-        
         human_click(driver, sign_in_btn)
         time.sleep(random.uniform(2, 3.5))
         
@@ -561,7 +511,6 @@ def login_if_needed(driver, username, password):
             EC.element_to_be_clickable((By.CSS_SELECTOR, "._button-login-password"))
         )
         human_click(driver, login_btn)
-        
         log_success("Bejelentkezes sikeres")
         time.sleep(random.uniform(3, 5))
         handle_mfa_popup(driver)
@@ -575,13 +524,13 @@ def is_row_processed(ws, row_idx):
     for col in range(1, 6):
         cell = ws.cell(row=row_idx, column=col)
         if cell.fill and cell.fill.fgColor and cell.fill.fgColor.rgb:
-            color = cell.fill.fgColor.rgb[-6:]
-            if color == GREEN_COLOR:
+            if cell.fill.fgColor.rgb[-6:] == GREEN_COLOR:
                 return True
     return False
 
 def save_pod_pdf(driver, download_folder, new_name):
-    """POD oldal tiszta PDF mentése: Print gomb -> CDP mentés az új ablakból"""
+    """POD oldal tiszta PDF mentése: Print gomb -> CDP mentés az új ablakból.
+    FONTOS: ezt a függvényt a FOablakból kell hívni (nem a POD ablakból)."""
     main_window = driver.current_window_handle
     
     try:
@@ -589,12 +538,11 @@ def save_pod_pdf(driver, download_folder, new_name):
         
         log_step("PDF", "Print this page gomb keresese...")
         print_btn = None
-        print_selectors = [
+        for by, sel, desc in [
             (By.ID, "stApp_POD_btnPrint", "ID: stApp_POD_btnPrint"),
-            (By.LINK_TEXT, "Print this page", "Link szöveg"),
+            (By.LINK_TEXT, "Print this page", "Link szoveg"),
             (By.PARTIAL_LINK_TEXT, "Print", "Reszleges")
-        ]
-        for by, sel, desc in print_selectors:
+        ]:
             try:
                 print_btn = WebDriverWait(driver, 5).until(
                     EC.element_to_be_clickable((by, sel))
@@ -612,6 +560,7 @@ def save_pod_pdf(driver, download_folder, new_name):
         log_success("Print gomb megnyomva")
         time.sleep(2)
         
+        # Várj az új nyomtatási ablakra
         try:
             WebDriverWait(driver, 8).until(
                 lambda d: len(d.window_handles) > len(windows_before)
@@ -621,14 +570,15 @@ def save_pod_pdf(driver, download_folder, new_name):
             if new_windows:
                 print_window = new_windows.pop()
                 driver.switch_to.window(print_window)
-                log_success("UPS nyomtatasi nezet ablakra valtva")
+                log_success("Nyomtatasi nezet ablakra valtva")
                 time.sleep(2)
             else:
                 log_step("PDF", "Nincs uj ablak, maradunk")
         except TimeoutException:
             log_step("PDF", "Uj ablak nem nyilt, maradunk")
         
-        log_step("PDF", "CDP PDF mentes a nyomtatasi nezetbol...")
+        # CDP PDF mentés
+        log_step("PDF", "CDP PDF mentes...")
         pdf_data = driver.execute_cdp_cmd("Page.printToPDF", {
             "printBackground": True,
             "paperWidth": 8.27,
@@ -653,6 +603,7 @@ def save_pod_pdf(driver, download_folder, new_name):
         return False
         
     finally:
+        # Minden extra ablak bezárása, visszaváltás főablakra
         try:
             for handle in list(driver.window_handles):
                 if handle != main_window:
@@ -661,7 +612,6 @@ def save_pod_pdf(driver, download_folder, new_name):
                     log_step("Ablak", "Extra ablak bezarva")
         except Exception as e:
             log_step("Ablak", f"Bezarasi hiba: {str(e)}")
-        
         try:
             driver.switch_to.window(main_window)
             log_step("Ablak", "Visszavaltas fo ablakra")
@@ -680,7 +630,7 @@ def main():
     UPS_PASSWORD = sys.argv[5]
 
     log_message("="*60)
-    log_message("PYTHON SCRIPT FUT (VÉGSŐ VERZIÓ - about:blank NÉLKÜL)")
+    log_message("PYTHON SCRIPT FUT")
     log_message("="*60)
     log_message(f"Excel: {excel_path}")
     log_message(f"Mappa: {download_folder}")
@@ -704,23 +654,19 @@ def main():
         wb = load_workbook(excel_path)
         ws = wb.active
     except Exception as e:
-        log_error("Excel megnyitasi hiba (openpyxl)", str(e)); return 1
+        log_error("Excel megnyitasi hiba", str(e)); return 1
 
     to_process_indices = []
     for idx, row in df.iterrows():
         excel_row = idx + 2
-        
         if is_row_processed(ws, excel_row):
-            log_step("Szures", f"Sor {excel_row} mar fel van dolgozva (zold), kihagyva")
+            log_step("Szures", f"Sor {excel_row} mar feldolgozva (zold), kihagyva")
             continue
-        
         tracking = str(row['Tracking Number']).strip() if pd.notna(row['Tracking Number']) else ''
         new_name = str(row['összefűz']).strip() if pd.notna(row['összefűz']) else ''
-        
         if not tracking or not new_name:
-            log_step("Szures", f"Sor {excel_row} hianyos (nincs Tracking Number vagy összefűz), kihagyva")
+            log_step("Szures", f"Sor {excel_row} hianyos, kihagyva")
             continue
-        
         to_process_indices.append((idx, excel_row, tracking, new_name))
     
     total = len(to_process_indices)
@@ -730,9 +676,8 @@ def main():
     update_progress(0, total)
     log_message("")
 
-    log_message("[2/5] Böngésző indítása (ANTI-DETECTION MODE)...")
+    log_message("[2/5] Bongeszo inditasa (ANTI-DETECTION MODE)...")
     chrome_options = Options()
-    
     prefs = {
         "download.default_directory": download_folder,
         "download.prompt_for_download": False,
@@ -742,7 +687,6 @@ def main():
         "credentials_enable_service": False
     }
     chrome_options.add_experimental_option("prefs", prefs)
-
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option('useAutomationExtension', False)
@@ -781,7 +725,6 @@ def main():
                 Object.defineProperty(navigator, 'connection', { get: () => ({ effectiveType: '4g', rtt: 50, downlink: 10, saveData: false }) });
             """
         })
-        
         try:
             driver.execute_script("""
                 const getParameter = WebGLRenderingContext.prototype.getParameter;
@@ -793,7 +736,6 @@ def main():
             """)
         except:
             pass
-        
         log_success("Bongeszo sikeresen elindult")
         
     except Exception as e:
@@ -808,7 +750,6 @@ def main():
         accept_cookies(driver)
         login_if_needed(driver, UPS_USERNAME, UPS_PASSWORD)
         accept_cookies(driver)
-        
         log_message("")
 
         processed = 0
@@ -824,58 +765,69 @@ def main():
             log_message(f"Feldolgozas: {tracking} -> {new_name} (Excel sor: {excel_row})")
             log_message("-"*50)
 
-            log_step("3a", "Tracking szám mező keresése...")
-            track_selectors = [
+            # --- TRACKING SZÁM BEÍRÁSA ---
+            log_step("3a", "Tracking szam mezo keresese...")
+            track_input = None
+            for by, sel, desc in [
                 (By.ID, "stApp_trackingNumber", "ID: stApp_trackingNumber"),
                 (By.CSS_SELECTOR, "textarea[formcontrolname='trackingNumber']", "Angular form control"),
                 (By.CSS_SELECTOR, "textarea.ups-textbox_textarea", "Class"),
                 (By.NAME, "trackingnumber", "NAME")
-            ]
-            track_input = None
-            used = ""
-            for by, sel, desc in track_selectors:
-                el = check_element(driver, by, sel, 3, desc)
-                if el:
-                    track_input = el; used = desc; break
+            ]:
+                try:
+                    el = WebDriverWait(driver, 3).until(EC.presence_of_element_located((by, sel)))
+                    track_input = el
+                    log_step("3a", f"Megtalalva: {desc}")
+                    break
+                except:
+                    continue
+
             if not track_input:
-                log_error("Tracking mező nem talalhato"); continue
+                log_error("Tracking mezo nem talalhato"); continue
             
             human_click(driver, track_input)
             time.sleep(random.uniform(0.5, 1.0))
-            
             track_input.clear()
             time.sleep(0.3)
             track_input.send_keys(Keys.CONTROL + "a")
             track_input.send_keys(Keys.DELETE)
             time.sleep(0.3)
-            
             human_type(track_input, tracking)
             time.sleep(random.uniform(0.5, 1.0))
 
-            log_step("3b", "Track gomb keresése...")
+            # --- TRACK GOMB ---
+            log_step("3b", "Track gomb keresese...")
             try:
                 track_btn = WebDriverWait(driver, 10).until(
                     EC.element_to_be_clickable((By.ID, "stApp_btnTrack"))
                 )
-                log_success("Track gomb megtalálva és kattintható")
-                
+                log_success("Track gomb megtalálva")
                 human_click(driver, track_btn)
-                log_success("Track gomb megnyomva (human click)")
-                
+                log_success("Track gomb megnyomva")
                 handle_mfa_popup(driver)
                 
+                # *** JAVÍTÁS: csak a POD gombra várunk, URL ellenőrzés NÉLKÜL ***
+                # Az Angular SPA nem mindig változtatja az URL-t időben
+                log_step("Varas", "POD gombra varunk (max 45mp)...")
                 try:
-                    WebDriverWait(driver, 10).until(
-                        EC.url_contains("tracknum")
-                    )
-                    time.sleep(2)
-                    WebDriverWait(driver, 20).until(
+                    WebDriverWait(driver, 45).until(
                         EC.presence_of_element_located((By.ID, "stApp_btnProofOfDeliveryonDetails"))
                     )
-                    log_success("POD gomb megjelent, oldal betoltve")
+                    log_success("POD gomb megjelent")
                 except TimeoutException:
-                    log_error("POD gomb nem jelent meg 30 mp alatt, kihagyva")
-                    continue
+                    current_url = driver.current_url
+                    log_error(f"POD gomb nem jelent meg, URL: {current_url}")
+                    log_step("Retry", "Oldal frissitese, ujra probalkozas...")
+                    driver.refresh()
+                    time.sleep(5)
+                    try:
+                        WebDriverWait(driver, 20).until(
+                            EC.presence_of_element_located((By.ID, "stApp_btnProofOfDeliveryonDetails"))
+                        )
+                        log_success("POD gomb megjelent frissites utan")
+                    except TimeoutException:
+                        log_error("POD gomb frissites utan sem jelent meg, sor kihagyva")
+                        continue
                 
             except Exception as e:
                 log_error("Hiba a track gomb kezelésekor", str(e))
@@ -884,25 +836,33 @@ def main():
             close_policy_popup(driver)
             close_chat_if_present(driver)
 
+            # --- POD LINK ---
             log_step("3c", "Proof of Delivery link keresese...")
-            pod_selectors = [
-                (By.ID, "stApp_btnProofOfDeliveryonDetails", "ID: stApp_btnProofOfDeliveryonDetails"),
-                (By.LINK_TEXT, "Proof of Delivery", "Link szöveg"),
-                (By.PARTIAL_LINK_TEXT, "Proof", "Reszleges")
-            ]
             pod_link = None
-            for by, sel, desc in pod_selectors:
-                el = check_element(driver, by, sel, 5, desc)
-                if el:
-                    pod_link = el; used = desc; break
+            used = ""
+            for by, sel, desc in [
+                (By.ID, "stApp_btnProofOfDeliveryonDetails", "ID"),
+                (By.LINK_TEXT, "Proof of Delivery", "Link szoveg"),
+                (By.PARTIAL_LINK_TEXT, "Proof", "Reszleges")
+            ]:
+                try:
+                    el = WebDriverWait(driver, 5).until(EC.presence_of_element_located((by, sel)))
+                    pod_link = el
+                    used = desc
+                    log_step("3c", f"POD link talalva: {desc}")
+                    break
+                except:
+                    continue
+
             if not pod_link:
                 log_error("POD link nem talalhato"); continue
 
+            # Főablak rögzítése MIELŐTT POD ablakot nyitunk
             main_window = driver.current_window_handle
             human_click(driver, pod_link)
             log_success(f"POD link megnyitva ({used})")
 
-            # Várj a POD ablakra, de NE válts át - a save_pod_pdf kezeli
+            # Várj a POD ablakra (NE válts át - save_pod_pdf kezeli)
             try:
                 WebDriverWait(driver, 8).until(
                     lambda d: len(d.window_handles) > 1
@@ -910,9 +870,9 @@ def main():
                 log_success("POD ablak megnyilt")
                 time.sleep(3)
             except:
-                log_step("Ablak", "Nincs uj ablak")
+                log_step("Ablak", "Nincs uj ablak, folytatjuk")
 
-            # Itt még a főablakban vagyunk
+            # PDF mentés - főablakból hívjuk
             pdf_saved = save_pod_pdf(driver, download_folder, new_name)
 
             if pdf_saved:
@@ -921,9 +881,9 @@ def main():
                 log_success(f"Sor {excel_row} zoldre szinezve")
                 success_count += 1
             else:
-                log_error("PDF mentés sikertelen")
+                log_error("PDF mentes sikertelen")
 
-            # Visszanavigálás - about:blank NÉLKÜL
+            # --- VISSZANAVIGÁLÁS ---
             log_step("Nav", "Visszanavigalas a tracking foroldalra...")
             driver.get(ups_url)
             time.sleep(random.uniform(2, 3))
@@ -949,24 +909,25 @@ def main():
         output_path = excel_path.replace('.xlsx', '_FELDOLGOZOTT.xlsx')
         if output_path == excel_path:
             output_path = excel_path + '_FELDOLGOZOTT.xlsx'
-        
         try:
             wb.save(output_path)
             log_success(f"Excel mentve: {output_path}")
             log_message(f"Sikeres: {success_count}/{total}\n")
         except Exception as e:
-            log_error("Excel mentesi hiba", str(e))
-            return 1
+            log_error("Excel mentesi hiba", str(e)); return 1
 
         log_message("[5/5] Folyamat befejezve")
         return 0
     except Exception as e:
         log_error("Varatlan hiba", str(e)); return 1
     finally:
-        if driver:
+        try:
             driver.quit()
             log_message("Bongeszo bezarva")
-        if os.path.exists(STOP_FILE): os.remove(STOP_FILE)
+        except:
+            pass
+        if os.path.exists(STOP_FILE):
+            os.remove(STOP_FILE)
 
 if __name__ == "__main__":
     sys.exit(main())
@@ -976,7 +937,7 @@ if __name__ == "__main__":
     $utf8WithBom = New-Object System.Text.UTF8Encoding $true
     [System.IO.File]::WriteAllText($tempPython, $pythonScript, $utf8WithBom)
     
-    Write-Log "Python script futtatasa (vegso verzio)..."
+    Write-Log "Python script futtatasa..."
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = "python"
     $psi.Arguments = "`"$tempPython`" `"$url`" `"$excelPath`" `"$downloadFolder`" `"$username`" `"$password`""
@@ -1027,7 +988,8 @@ if __name__ == "__main__":
     Unregister-Event -SourceIdentifier $errorEvent.Name -Force -ErrorAction SilentlyContinue
     Remove-Item $tempPython -Force -ErrorAction SilentlyContinue
     
-    Write-Log ""; Write-Log "="*50
+    Write-Log ""
+    Write-Log "="*50
     if ($exitCode -eq 0) {
         Write-Log "FOLYAMAT SIKERESEN BEFEJEZODOTT"
         [System.Windows.Forms.MessageBox]::Show("A letöltés sikeresen befejeződött!", "Siker", "OK", "Information")
