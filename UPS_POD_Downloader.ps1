@@ -292,19 +292,21 @@ $startButton.Add_Click({
     Write-Log "Felhasznalo: $username"
     Write-Log ""
     
-    # Python script – TELJES ANTI-DETECTION + MFA KEZELÉS (pontos selector) + POD VÁRAKOZÁS
+    # Python script – TELJES ANTI-DETECTION + HUMAN-LIKE BEJELENTKEZÉS + HUMAN-LIKE TRACKING
     $pythonScript = @'
 import sys
 import pandas as pd
 import time
 import os
 import shutil
+import random
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.action_chains import ActionChains
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, WebDriverException
 from openpyxl import load_workbook
@@ -343,6 +345,20 @@ def check_element(driver, by, selector, timeout=5, description=""):
         log_error(f"Hiba a kereseskor: {description}", str(e))
         return None
 
+def human_type(element, text):
+    """Emberi gépelést szimuláló függvény"""
+    for char in text:
+        element.send_keys(char)
+        time.sleep(random.uniform(0.05, 0.2))
+
+def human_click(driver, element):
+    """Emberi kattintást szimuláló függvény"""
+    actions = ActionChains(driver)
+    actions.move_to_element(element)
+    time.sleep(random.uniform(0.3, 0.8))
+    actions.click()
+    actions.perform()
+
 def handle_mfa_popup(driver):
     """MFA / 2FA felugró kezelése - Skip for now (pontos selectorokkal)"""
     try:
@@ -352,7 +368,7 @@ def handle_mfa_popup(driver):
                 EC.element_to_be_clickable((By.CSS_SELECTOR, "button.af-nextButton"))
             )
             log_step("MFA", "MFA popup észlelve, Skip for now...")
-            skip_btn.click()
+            human_click(driver, skip_btn)
             log_success("MFA popup kihagyva")
             time.sleep(2)
             return True
@@ -364,7 +380,8 @@ def handle_mfa_popup(driver):
             skip_btn = WebDriverWait(driver, 2).until(
                 EC.element_to_be_clickable((By.XPATH, "//button[contains(text(),'Skip for now')]"))
             )
-            skip_btn.click()
+            log_step("MFA", "MFA popup észlelve, Skip for now...")
+            human_click(driver, skip_btn)
             log_success("MFA popup kihagyva (szöveg alapján)")
             time.sleep(2)
             return True
@@ -387,7 +404,7 @@ def close_policy_popup(driver):
         not_now_btn = WebDriverWait(driver, 3).until(
             EC.element_to_be_clickable((By.CSS_SELECTOR, ".ups-notNowButton"))
         )
-        not_now_btn.click()
+        human_click(driver, not_now_btn)
         log_success("Policy popup bezarva (Not Now)")
         time.sleep(1)
     except Exception as e:
@@ -402,13 +419,16 @@ def close_chat_if_present(driver):
         close_btn = WebDriverWait(driver, 3).until(
             EC.element_to_be_clickable((By.CSS_SELECTOR, "button.WACHeader__CloseAndRestartButton"))
         )
-        close_btn.click()
+        human_click(driver, close_btn)
         time.sleep(1)
-        yes_btn = WebDriverWait(driver, 3).until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR, "button.WACConfirmModal__YesButton"))
-        )
-        yes_btn.click()
-        log_success("Chat bezarva")
+        try:
+            yes_btn = WebDriverWait(driver, 3).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "button.WACConfirmModal__YesButton"))
+            )
+            human_click(driver, yes_btn)
+            log_success("Chat bezarva")
+        except:
+            log_success("Chat bezarva (nem kellett megerősítés)")
         time.sleep(1)
     except Exception as e:
         log_step("Chat", f"Nem sikerult bezarni a chatet: {str(e)}")
@@ -456,7 +476,7 @@ def accept_cookies(driver):
                 btn = WebDriverWait(driver, 2).until(
                     EC.element_to_be_clickable((by, selector))
                 )
-                btn.click()
+                human_click(driver, btn)
                 log_success(f"Cookie banner kezelve: {description}")
                 time.sleep(1)
                 return True
@@ -475,7 +495,7 @@ def accept_cookies(driver):
                 btn = WebDriverWait(driver, 2).until(
                     EC.element_to_be_clickable((by, selector))
                 )
-                btn.click()
+                human_click(driver, btn)
                 log_success(f"Cookie ablak kezelve: {description}")
                 time.sleep(1)
                 return True
@@ -489,18 +509,12 @@ def accept_cookies(driver):
         return False
 
 def login_if_needed(driver, username, password):
-    """
-    Bejelentkezés automatizálása - a GUI-ból kapott username/password használatával.
-    """
     try:
-        # 1. LÉPÉS: "Log in" gomb keresése
         sign_in_selectors = [
             "//a[contains(text(),'Sign in')]",
             "//a[contains(text(),'Log in')]",
-            "//a[contains(text(),'Bejelentkezés')]",
             "//a[contains(@href,'/account/login')]",
             "//button[contains(text(),'Sign in')]",
-            "//button[contains(text(),'Log in')]"
         ]
         
         sign_in_btn = None
@@ -509,55 +523,61 @@ def login_if_needed(driver, username, password):
                 sign_in_btn = WebDriverWait(driver, 2).until(
                     EC.element_to_be_clickable((By.XPATH, selector))
                 )
-                log_step("Login", f"Bejelentkezes gomb talalva")
                 break
             except:
                 continue
         
-        if sign_in_btn:
-            log_step("Login", "Bejelentkezes szukseges...")
-            sign_in_btn.click()
-            time.sleep(2)
-            
-            # 2. LÉPÉS: Felhasználónév mező
-            username_field = WebDriverWait(driver, 5).until(
-                EC.presence_of_element_located((By.ID, "username"))
-            )
-            username_field.clear()
-            username_field.send_keys(username)
-            log_step("Login", "Felhasznalonev megadva")
-            time.sleep(1)
-            
-            # 3. LÉPÉS: "Continue" gomb a felhasználónév után
-            continue_btn = WebDriverWait(driver, 3).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, "._button-login-id"))
-            )
-            continue_btn.click()
-            log_step("Login", "Continue gomb megnyomva")
-            time.sleep(2)
-            
-            # 4. LÉPÉS: Jelszó mező
-            password_field = WebDriverWait(driver, 5).until(
-                EC.presence_of_element_located((By.ID, "password"))
-            )
-            password_field.clear()
-            password_field.send_keys(password)
-            log_step("Login", "Jelszo megadva")
-            time.sleep(1)
-            
-            # 5. LÉPÉS: "Continue" gomb a jelszó után
-            login_btn = WebDriverWait(driver, 3).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, "._button-login-password"))
-            )
-            login_btn.click()
-            
-            log_success("Bejelentkezes sikeres")
-            time.sleep(3)
-            handle_mfa_popup(driver)  # 🔥 MFA kezelése bejelentkezés után
-            return True
-        else:
+        if not sign_in_btn:
             log_step("Login", "Mar be van jelentkezve")
             return False
+
+        log_step("Login", "Bejelentkezes szukseges...")
+        
+        # Emberi egérmozgás + kattintás
+        human_click(driver, sign_in_btn)
+        time.sleep(random.uniform(2, 3.5))
+        
+        # Felhasználónév - lassan gépelve
+        username_field = WebDriverWait(driver, 8).until(
+            EC.presence_of_element_located((By.ID, "username"))
+        )
+        human_click(driver, username_field)
+        time.sleep(random.uniform(0.5, 1.0))
+        username_field.clear()
+        human_type(username_field, username)
+        log_step("Login", "Felhasznalonev megadva")
+        time.sleep(random.uniform(1.0, 2.0))
+        
+        # Continue gomb
+        continue_btn = WebDriverWait(driver, 5).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, "._button-login-id"))
+        )
+        human_click(driver, continue_btn)
+        log_step("Login", "Continue gomb megnyomva")
+        time.sleep(random.uniform(2.0, 3.5))
+        
+        # Jelszó - lassan gépelve
+        password_field = WebDriverWait(driver, 8).until(
+            EC.presence_of_element_located((By.ID, "password"))
+        )
+        human_click(driver, password_field)
+        time.sleep(random.uniform(0.5, 1.0))
+        password_field.clear()
+        human_type(password_field, password)
+        log_step("Login", "Jelszo megadva")
+        time.sleep(random.uniform(1.0, 2.0))
+        
+        # Login gomb
+        login_btn = WebDriverWait(driver, 5).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, "._button-login-password"))
+        )
+        human_click(driver, login_btn)
+        
+        log_success("Bejelentkezes sikeres")
+        time.sleep(random.uniform(3, 5))
+        handle_mfa_popup(driver)
+        return True
+        
     except Exception as e:
         log_error("Bejelentkezesi hiba", str(e))
         return False
@@ -581,7 +601,7 @@ def main():
     UPS_PASSWORD = sys.argv[5]
 
     log_message("="*60)
-    log_message("PYTHON SCRIPT FUT (ANTI-DETECTION + MFA)")
+    log_message("PYTHON SCRIPT FUT (ANTI-DETECTION + HUMAN-LIKE)")
     log_message("="*60)
     log_message(f"Excel: {excel_path}")
     log_message(f"Mappa: {download_folder}")
@@ -773,6 +793,9 @@ def main():
         time.sleep(3)
         log_success("Oldal betoltve")
         
+        # MFA kezelése már az elején
+        handle_mfa_popup(driver)
+        
         accept_cookies(driver)
         login_if_needed(driver, UPS_USERNAME, UPS_PASSWORD)
         accept_cookies(driver)
@@ -807,9 +830,16 @@ def main():
                     track_input = el; used = desc; break
             if not track_input:
                 log_error("Tracking mező nem talalhato"); continue
-            track_input.clear(); track_input.send_keys(tracking)
-            log_success(f"Tracking szám beirva: '{tracking}' (hossz: {len(tracking)})")
-            time.sleep(1)
+            
+            # Emberi kattintás a mezőre
+            human_click(driver, track_input)
+            time.sleep(random.uniform(0.5, 1.0))
+            track_input.clear()
+            
+            # Emberi gépelés a tracking számnak
+            log_success(f"Tracking szám beirasa human modban: '{tracking}'")
+            human_type(track_input, tracking)
+            time.sleep(random.uniform(0.5, 1.0))
 
             log_step("3b", "Track gomb keresése...")
             try:
@@ -818,8 +848,8 @@ def main():
                 )
                 log_success("Track gomb megtalálva és kattintható")
                 
-                track_btn.click()
-                log_success("Track gomb megnyomva")
+                human_click(driver, track_btn)
+                log_success("Track gomb megnyomva (human click)")
                 
                 # MFA kezelése (ha itt jönne elő)
                 handle_mfa_popup(driver)
@@ -859,7 +889,7 @@ def main():
                 log_error("POD link nem talalhato"); continue
 
             main_window = driver.current_window_handle
-            pod_link.click()
+            human_click(driver, pod_link)
             log_success(f"POD link megnyitva ({used})")
 
             log_step("3d", "Ablakvaltas...")
@@ -884,7 +914,7 @@ def main():
                 if el:
                     print_link = el; used = desc; break
             if print_link:
-                print_link.click()
+                human_click(driver, print_link)
                 log_success(f"Print link megnyitva ({used})")
                 time.sleep(2)
 
@@ -947,7 +977,7 @@ if __name__ == "__main__":
     $utf8WithBom = New-Object System.Text.UTF8Encoding $true
     [System.IO.File]::WriteAllText($tempPython, $pythonScript, $utf8WithBom)
     
-    Write-Log "Python script futtatasa (anti-detection + MFA mod)..."
+    Write-Log "Python script futtatasa (anti-detection + human-like)..."
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = "python"
     $psi.Arguments = "`"$tempPython`" `"$url`" `"$excelPath`" `"$downloadFolder`" `"$username`" `"$password`""
