@@ -215,10 +215,8 @@ $stopButton.Add_Click({
         Set-Content -Path $stopFilePath -Value "stop" -Force
         Write-Log "   Jelzőfájl létrehozva: $stopFilePath"
         
-        # Várj 3 másodpercet, hogy a Python reagáljon
         Start-Sleep -Seconds 3
         
-        # Ha még mindig fut, kényszerített leállítás
         if (!$script:pythonProcess.HasExited) {
             Write-Log "   Python folyamat nem reagal, kényszerített leállítás..."
             $script:pythonProcess.Kill()
@@ -242,7 +240,7 @@ $startButton.ForeColor = "White"
 $startButton.Font = New-Object System.Drawing.Font("Arial", 9, [System.Drawing.FontStyle]::Bold)
 $form.Controls.Add($startButton)
 
-# Kilépés gomb (megerősítve)
+# Kilépés gomb
 $exitButton = New-Object System.Windows.Forms.Button
 $exitButton.Location = New-Object System.Drawing.Point(520, 600)
 $exitButton.Size = New-Object System.Drawing.Size(90, 25)
@@ -287,7 +285,6 @@ $startButton.Add_Click({
     $username = $userBox.Text.Trim()
     $password = $passBox.Text.Trim()
     
-    # Ellenőrzések
     if (-not $url) {
         [System.Windows.Forms.MessageBox]::Show("Add meg az UPS URL-t!", "Hiba", "OK", "Error")
         $startButton.Enabled = $true; $stopButton.Enabled = $false; return
@@ -319,7 +316,7 @@ $startButton.Add_Click({
     Write-Log "Felhasznalo: $username"
     Write-Log ""
     
-    # Python script – TELJES ANTI-DETECTION + HUMAN-LIKE + CDP PDF
+    # Python script – VÉGSŐ VERZIÓ
     $pythonScript = @'
 import sys
 import pandas as pd
@@ -388,9 +385,8 @@ def human_click(driver, element):
     actions.perform()
 
 def handle_mfa_popup(driver):
-    """MFA / 2FA felugró kezelése - Skip for now (pontos selectorokkal)"""
+    """MFA / 2FA felugró kezelése - Skip for now"""
     try:
-        # Első próbálkozás: a pontos class alapján
         try:
             skip_btn = WebDriverWait(driver, 3).until(
                 EC.element_to_be_clickable((By.CSS_SELECTOR, "button.af-nextButton"))
@@ -403,7 +399,6 @@ def handle_mfa_popup(driver):
         except:
             pass
         
-        # Második próbálkozás: a szöveg alapján
         try:
             skip_btn = WebDriverWait(driver, 2).until(
                 EC.element_to_be_clickable((By.XPATH, "//button[contains(text(),'Skip for now')]"))
@@ -464,7 +459,6 @@ def close_chat_if_present(driver):
 def accept_cookies(driver):
     """Cookie-k automatikus elfogadása - kis banner + nagy OneTrust"""
     try:
-        # 1. KIS BANNER
         banner_selectors = [
             (By.ID, "onetrust-accept-btn-handler", "Allow All Cookies (banner)"),
             (By.ID, "onetrust-reject-all-handler", "Essential Only (banner)"),
@@ -483,7 +477,6 @@ def accept_cookies(driver):
             except:
                 continue
         
-        # 2. NAGY ONETRUST ABLAK
         big_selectors = [
             (By.ID, "accept-recommended-btn-handler", "Allow All (big)"),
             (By.CSS_SELECTOR, ".save-preference-btn-handler", "Confirm Choices (big)"),
@@ -533,11 +526,9 @@ def login_if_needed(driver, username, password):
 
         log_step("Login", "Bejelentkezes szukseges...")
         
-        # Emberi egérmozgás + kattintás
         human_click(driver, sign_in_btn)
         time.sleep(random.uniform(2, 3.5))
         
-        # Felhasználónév - lassan gépelve
         username_field = WebDriverWait(driver, 8).until(
             EC.presence_of_element_located((By.ID, "username"))
         )
@@ -548,7 +539,6 @@ def login_if_needed(driver, username, password):
         log_step("Login", "Felhasznalonev megadva")
         time.sleep(random.uniform(1.0, 2.0))
         
-        # Continue gomb
         continue_btn = WebDriverWait(driver, 5).until(
             EC.element_to_be_clickable((By.CSS_SELECTOR, "._button-login-id"))
         )
@@ -556,7 +546,6 @@ def login_if_needed(driver, username, password):
         log_step("Login", "Continue gomb megnyomva")
         time.sleep(random.uniform(2.0, 3.5))
         
-        # Jelszó - lassan gépelve
         password_field = WebDriverWait(driver, 8).until(
             EC.presence_of_element_located((By.ID, "password"))
         )
@@ -567,7 +556,6 @@ def login_if_needed(driver, username, password):
         log_step("Login", "Jelszo megadva")
         time.sleep(random.uniform(1.0, 2.0))
         
-        # Login gomb
         login_btn = WebDriverWait(driver, 5).until(
             EC.element_to_be_clickable((By.CSS_SELECTOR, "._button-login-password"))
         )
@@ -591,52 +579,95 @@ def is_row_processed(ws, row_idx):
                 return True
     return False
 
-def handle_chrome_print(driver, download_folder, new_name):
-    """CDP alapú közvetlen PDF mentés - megkerüli a nyomtatási dialógust"""
+def save_pod_pdf(driver, download_folder, new_name):
+    """POD oldal tiszta PDF mentése: Print gomb -> CDP mentés az új ablakból"""
+    main_window = driver.current_window_handle
+    
     try:
-        main = driver.current_window_handle
+        windows_before = set(driver.window_handles)
         
-        # Ha új ablak nyílt, arra váltunk
-        if len(driver.window_handles) > 1:
-            for handle in driver.window_handles:
-                if handle != main:
-                    driver.switch_to.window(handle)
-                    break
-            log_step("Print", "Uj ablakra valtva")
-            time.sleep(2)
+        log_step("PDF", "Print this page gomb keresese...")
+        print_btn = None
+        print_selectors = [
+            (By.ID, "stApp_POD_btnPrint", "ID: stApp_POD_btnPrint"),
+            (By.LINK_TEXT, "Print this page", "Link szöveg"),
+            (By.PARTIAL_LINK_TEXT, "Print", "Reszleges")
+        ]
+        for by, sel, desc in print_selectors:
+            try:
+                print_btn = WebDriverWait(driver, 5).until(
+                    EC.element_to_be_clickable((by, sel))
+                )
+                log_step("PDF", f"Print gomb talalva: {desc}")
+                break
+            except:
+                continue
         
-        # CDP parancs: oldal nyomtatása PDF-be
-        log_step("Print", "CDP alapu PDF mentes...")
+        if not print_btn:
+            log_error("Print gomb nem talalhato")
+            return False
+        
+        human_click(driver, print_btn)
+        log_success("Print gomb megnyomva")
+        time.sleep(2)
+        
+        try:
+            WebDriverWait(driver, 8).until(
+                lambda d: len(d.window_handles) > len(windows_before)
+            )
+            windows_after = set(driver.window_handles)
+            new_windows = windows_after - windows_before
+            if new_windows:
+                print_window = new_windows.pop()
+                driver.switch_to.window(print_window)
+                log_success("UPS nyomtatasi nezet ablakra valtva")
+                time.sleep(2)
+            else:
+                log_step("PDF", "Nincs uj ablak, maradunk")
+        except TimeoutException:
+            log_step("PDF", "Uj ablak nem nyilt, maradunk")
+        
+        log_step("PDF", "CDP PDF mentes a nyomtatasi nezetbol...")
         pdf_data = driver.execute_cdp_cmd("Page.printToPDF", {
             "printBackground": True,
-            "paperWidth": 8.27,   # A4 szélesség inch-ben
-            "paperHeight": 11.69, # A4 magasság inch-ben
+            "paperWidth": 8.27,
+            "paperHeight": 11.69,
             "marginTop": 0.4,
             "marginBottom": 0.4,
             "marginLeft": 0.4,
             "marginRight": 0.4,
         })
         
-        # PDF mentése
         pdf_bytes = base64.b64decode(pdf_data['data'])
         output_path = os.path.join(download_folder, f"{new_name}.pdf")
-        
         if os.path.exists(output_path):
             os.remove(output_path)
-        
         with open(output_path, 'wb') as f:
             f.write(pdf_bytes)
-        
-        log_success(f"PDF mentve CDP-vel: {new_name}.pdf ({len(pdf_bytes)} bytes)")
-        
-        # Visszaváltás főablakra
-        driver.switch_to.window(main)
+        log_success(f"PDF mentve: {new_name}.pdf ({len(pdf_bytes)} bytes)")
         return True
         
     except Exception as e:
-        log_error("CDP PDF mentes hiba", str(e))
-        driver.switch_to.window(main)
+        log_error("PDF mentes hiba", str(e))
         return False
+        
+    finally:
+        try:
+            for handle in list(driver.window_handles):
+                if handle != main_window:
+                    driver.switch_to.window(handle)
+                    driver.close()
+                    log_step("Ablak", "Extra ablak bezarva")
+        except Exception as e:
+            log_step("Ablak", f"Bezarasi hiba: {str(e)}")
+        
+        try:
+            driver.switch_to.window(main_window)
+            log_step("Ablak", "Visszavaltas fo ablakra")
+        except:
+            if driver.window_handles:
+                driver.switch_to.window(driver.window_handles[0])
+                log_step("Ablak", "Visszavaltas elso elerheto ablakra")
 
 def main():
     if len(sys.argv) < 6:
@@ -648,7 +679,7 @@ def main():
     UPS_PASSWORD = sys.argv[5]
 
     log_message("="*60)
-    log_message("PYTHON SCRIPT FUT (ANTI-DETECTION + HUMAN-LIKE + CDP)")
+    log_message("PYTHON SCRIPT FUT (VÉGSŐ VERZIÓ)")
     log_message("="*60)
     log_message(f"Excel: {excel_path}")
     log_message(f"Mappa: {download_folder}")
@@ -701,7 +732,6 @@ def main():
     log_message("[2/5] Böngésző indítása (ANTI-DETECTION MODE)...")
     chrome_options = Options()
     
-    # Letöltési beállítások
     prefs = {
         "download.default_directory": download_folder,
         "download.prompt_for_download": False,
@@ -712,36 +742,19 @@ def main():
     }
     chrome_options.add_experimental_option("prefs", prefs)
 
-    # ============================================
-    # TELJES ANTI-DETECTION CSOMAG
-    # ============================================
-    
-    # Alap automation flag-ek eltüntetése
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option('useAutomationExtension', False)
-    
-    # Sandbox és memória beállítások
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
-    
-    # GPU és extensionök letiltása
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--disable-extensions")
     chrome_options.add_argument("--disable-software-rasterizer")
-    
-    # Valósághű user-agent
     chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-    
-    # Nyelvi és időzóna beállítások
     chrome_options.add_argument("--lang=hu-HU")
     chrome_options.add_argument("--accept-lang=hu-HU,hu;q=0.9,en-US;q=0.8,en;q=0.7")
-    
-    # Ablakméret
     chrome_options.add_argument("--window-size=1920,1080")
     chrome_options.add_argument("--start-maximized")
-    
-    # További flag-ek
     chrome_options.add_argument("--disable-client-side-phishing-detection")
     chrome_options.add_argument("--disable-crash-reporter")
     chrome_options.add_argument("--disable-notifications")
@@ -756,81 +769,31 @@ def main():
         service = Service(ChromeDriverManager().install())
         driver = webdriver.Chrome(service=service, options=chrome_options)
         
-        # ============================================
-        # JAVASCRIPT-BEÁLLÍTÁSOK (futás közben)
-        # ============================================
-        
-        # navigator.webdriver elrejtése és egyéb property-k
         driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
             "source": """
-                // WebDriver property eltüntetése
-                Object.defineProperty(navigator, 'webdriver', {
-                    get: () => undefined
-                });
-                
-                // Valósághű plugin-ek
-                Object.defineProperty(navigator, 'plugins', {
-                    get: () => [1, 2, 3, 4, 5]
-                });
-                
-                // Valósághű nyelvek
-                Object.defineProperty(navigator, 'languages', {
-                    get: () => ['hu-HU', 'hu', 'en-US', 'en']
-                });
-                
-                // Chrome verzió elrejtése
-                Object.defineProperty(navigator, 'platform', {
-                    get: () => 'Win32'
-                });
-                
-                // Hardware konkurencia
-                Object.defineProperty(navigator, 'hardwareConcurrency', {
-                    get: () => 8
-                });
-                
-                // Device memory
-                Object.defineProperty(navigator, 'deviceMemory', {
-                    get: () => 8
-                });
-                
-                // Connection típus
-                Object.defineProperty(navigator, 'connection', {
-                    get: () => ({
-                        effectiveType: '4g',
-                        rtt: 50,
-                        downlink: 10,
-                        saveData: false
-                    })
-                });
-                
-                // Permission query
-                const originalQuery = window.navigator.permissions.query;
-                window.navigator.permissions.query = (parameters) => (
-                    parameters.name === 'notifications' ?
-                        Promise.resolve({ state: Notification.permission }) :
-                        originalQuery(parameters)
-                );
+                Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+                Object.defineProperty(navigator, 'languages', { get: () => ['hu-HU', 'hu', 'en-US', 'en'] });
+                Object.defineProperty(navigator, 'platform', { get: () => 'Win32' });
+                Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
+                Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
+                Object.defineProperty(navigator, 'connection', { get: () => ({ effectiveType: '4g', rtt: 50, downlink: 10, saveData: false }) });
             """
         })
         
-        # WebGL vendor és renderer elrejtése
         try:
             driver.execute_script("""
                 const getParameter = WebGLRenderingContext.prototype.getParameter;
                 WebGLRenderingContext.prototype.getParameter = function(parameter) {
-                    if (parameter === 37445) {
-                        return 'Intel Inc.';
-                    }
-                    if (parameter === 37446) {
-                        return 'Intel Iris OpenGL Engine';
-                    }
+                    if (parameter === 37445) { return 'Intel Inc.'; }
+                    if (parameter === 37446) { return 'Intel Iris OpenGL Engine'; }
                     return getParameter(parameter);
                 };
             """)
         except:
             pass
         
-        log_success("Bongeszo sikeresen elindult teljes anti-detection modban")
+        log_success("Bongeszo sikeresen elindult")
         
     except Exception as e:
         log_error("Bongeszo inditasi hiba", str(e)); return 1
@@ -840,9 +803,7 @@ def main():
         time.sleep(3)
         log_success("Oldal betoltve")
         
-        # MFA kezelése már az elején
         handle_mfa_popup(driver)
-        
         accept_cookies(driver)
         login_if_needed(driver, UPS_USERNAME, UPS_PASSWORD)
         accept_cookies(driver)
@@ -878,13 +839,9 @@ def main():
             if not track_input:
                 log_error("Tracking mező nem talalhato"); continue
             
-            # Emberi kattintás a mezőre
             human_click(driver, track_input)
             time.sleep(random.uniform(0.5, 1.0))
             track_input.clear()
-            
-            # Emberi gépelés a tracking számnak
-            log_success(f"Tracking szám beirasa human modban: '{tracking}'")
             human_type(track_input, tracking)
             time.sleep(random.uniform(0.5, 1.0))
 
@@ -898,10 +855,8 @@ def main():
                 human_click(driver, track_btn)
                 log_success("Track gomb megnyomva (human click)")
                 
-                # MFA kezelése (ha itt jönne elő)
                 handle_mfa_popup(driver)
                 
-                # Várj a POD link megjelenésére
                 try:
                     WebDriverWait(driver, 30).until(
                         EC.presence_of_element_located((By.ID, "stApp_btnProofOfDeliveryonDetails"))
@@ -915,10 +870,7 @@ def main():
                 log_error("Hiba a track gomb kezelésekor", str(e))
                 continue
 
-            # Policy popup kezelése
             close_policy_popup(driver)
-            
-            # Chat kezelése
             close_chat_if_present(driver)
 
             log_step("3c", "Proof of Delivery link keresese...")
@@ -939,21 +891,22 @@ def main():
             human_click(driver, pod_link)
             log_success(f"POD link megnyitva ({used})")
 
-            # Várj az új ablakra
             try:
-                WebDriverWait(driver, 5).until(lambda d: len(d.window_handles) > 1)
-                log_success("POD ablak megnyilt")
+                WebDriverWait(driver, 8).until(
+                    lambda d: len(d.window_handles) > 1
+                )
+                for w in driver.window_handles:
+                    if w != main_window:
+                        driver.switch_to.window(w)
+                        break
+                log_success("POD ablakra valtva")
+                time.sleep(3)
             except:
-                log_step("Ablak", "Nincs uj ablak, maradunk")
+                log_step("Ablak", "Nincs uj ablak")
 
-            # Várj hogy a POD oldal betöltsön
-            time.sleep(3)
-
-            # Közvetlen CDP PDF mentés - NEM kell a Print gombra kattintani!
-            pdf_saved = handle_chrome_print(driver, download_folder, new_name)
+            pdf_saved = save_pod_pdf(driver, download_folder, new_name)
 
             if pdf_saved:
-                # Excel sor zöldre színezése
                 for col in range(1, 6):
                     ws.cell(row=excel_row, column=col).fill = zold_fill
                 log_success(f"Sor {excel_row} zoldre szinezve")
@@ -961,7 +914,10 @@ def main():
             else:
                 log_error("PDF mentés sikertelen")
 
-            driver.switch_to.window(main_window)
+            log_step("Nav", "Visszanavigalas a tracking foroldalra...")
+            driver.get(ups_url)
+            time.sleep(random.uniform(2, 3))
+
             processed += 1
             update_progress(processed, total)
             log_success(f"Feldolgozva: {processed}/{total}")
@@ -997,7 +953,7 @@ if __name__ == "__main__":
     $utf8WithBom = New-Object System.Text.UTF8Encoding $true
     [System.IO.File]::WriteAllText($tempPython, $pythonScript, $utf8WithBom)
     
-    Write-Log "Python script futtatasa (anti-detection + human-like + CDP)..."
+    Write-Log "Python script futtatasa (vegso verzio)..."
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = "python"
     $psi.Arguments = "`"$tempPython`" `"$url`" `"$excelPath`" `"$downloadFolder`" `"$username`" `"$password`""
