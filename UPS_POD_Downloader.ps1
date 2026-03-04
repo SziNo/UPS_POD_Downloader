@@ -240,6 +240,10 @@ $startButton.Add_Click({
     Write-Log "UPS URL: $url"
     Write-Log ""
     
+    # 🔥 Várakozás a Chrome debug port inicializálására
+    Write-Log "Varakozas a Chrome debug port inicializalasara (3 mp)..."
+    Start-Sleep -Seconds 3
+    
     # Python script – CSATLAKOZÁS FUTÓ CHROME-HOZ, POPUP KEZELÉSSEL
     $pythonScript = @'
 import sys
@@ -439,6 +443,9 @@ def main():
     # 2. Csatlakozás a futó Chrome-hoz
     log_message("[2/5] Csatlakozas a futo Chrome-hoz...")
     log_message("  (Ellenorizd, hogy fut-e a 'POD Chrome' debug modban!)")
+    
+    # 🔥 Kis várakozás a Chrome debug port inicializálására
+    time.sleep(2)
     
     chrome_options = Options()
     chrome_options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
