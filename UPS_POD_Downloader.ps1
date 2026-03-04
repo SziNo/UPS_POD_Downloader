@@ -307,6 +307,7 @@ def update_progress(current, total):
     print(f"PROGRESS: {current},{total}"); sys.stdout.flush()
 
 def human_type(element, text):
+    """Bejelentkezéshez használt karakterenkénti gépelés"""
     for char in text:
         element.send_keys(char)
         time.sleep(random.uniform(0.05, 0.2))
@@ -744,28 +745,20 @@ def main():
             track_input.send_keys(Keys.CONTROL + "a")
             track_input.send_keys(Keys.DELETE)
             time.sleep(0.3)
-            human_type(track_input, tracking)
+            
+            # JAVÍTÁS: JavaScript alapú beillesztés (paste-szerű viselkedés)
+            driver.execute_script(
+                "arguments[0].value = arguments[1]; "
+                "arguments[0].dispatchEvent(new Event('input', {bubbles: true})); "
+                "arguments[0].dispatchEvent(new Event('change', {bubbles: true}));",
+                track_input, tracking
+            )
+            log_step("3a", f"Tracking szam beillesztve JavaScripttel: '{tracking}'")
             time.sleep(random.uniform(0.5, 1.0))
             
-            # Angular blur event - hogy a form ervenyesitse a mezot
+            # Angular blur event
             track_input.send_keys(Keys.TAB)
             time.sleep(random.uniform(1.0, 1.5))
-            
-            # Ellenorzés: tenyleg bent van a szam?
-            try:
-                actual_value = track_input.get_attribute('value')
-                log_step("3a", f"Mezo tartalma: '{actual_value}'")
-                if actual_value.strip() != tracking.strip():
-                    log_step("3a", "Ertek nem egyezik, ujra probaljuk...")
-                    human_click(driver, track_input)
-                    track_input.clear()
-                    time.sleep(0.5)
-                    human_type(track_input, tracking)
-                    time.sleep(1)
-                    track_input.send_keys(Keys.TAB)
-                    time.sleep(0.5)
-            except:
-                pass
 
             # --- TRACK GOMB ---
             log_step("3b", "Track gomb keresese...")
@@ -847,7 +840,6 @@ def main():
                 log_step("Ablak", f"POD ablak nem nyilt: {str(e)}")
 
             # PDF mentes - most a POD ablakbol hivjuk
-            # tracking_window-t adjuk at hogy a finally tudja hova visszavaltani
             pdf_saved = save_pod_pdf(driver, download_folder, new_name, tracking_window)
 
             if pdf_saved:
