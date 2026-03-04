@@ -292,7 +292,7 @@ $startButton.Add_Click({
     Write-Log "Felhasznalo: $username"
     Write-Log ""
     
-    # Python script – RÉGI, MŰKÖDŐ VERZIÓ + POLICY POPUP
+    # Python script – TELJES ANTI-DETECTION + MFA KEZELÉS + POD VÁRAKOZÁS
     $pythonScript = @'
 import sys
 import pandas as pd
@@ -343,6 +343,51 @@ def check_element(driver, by, selector, timeout=5, description=""):
         log_error(f"Hiba a kereseskor: {description}", str(e))
         return None
 
+def handle_mfa_popup(driver):
+    """MFA / 2FA felugró kezelése - Skip for now"""
+    try:
+        skip_selectors = [
+            (By.LINK_TEXT, "Skip for now"),
+            (By.PARTIAL_LINK_TEXT, "Skip"),
+            (By.CSS_SELECTOR, "a[data-analytics*='skip']"),
+            (By.XPATH, "//a[contains(text(),'Skip')]"),
+            (By.XPATH, "//button[contains(text(),'Skip')]"),
+            (By.XPATH, "//a[contains(text(),'skip')]"),
+        ]
+        for by, sel in skip_selectors:
+            try:
+                btn = WebDriverWait(driver, 4).until(
+                    EC.element_to_be_clickable((by, sel))
+                )
+                log_step("MFA", "MFA popup észlelve, Skip for now...")
+                btn.click()
+                log_success("MFA popup kihagyva")
+                time.sleep(2)
+                return True
+            except:
+                continue
+        log_step("MFA", "Nincs MFA popup")
+        return False
+    except Exception as e:
+        log_step("MFA", f"MFA hiba: {str(e)}")
+        return False
+
+def close_policy_popup(driver):
+    """Bezárja a 'Make Deliveries Work for You!' felugró ablakot."""
+    try:
+        popup = driver.find_elements(By.CSS_SELECTOR, "#ups-updateProfile-popup-container")
+        if not popup:
+            return
+        log_step("Policy", "Policy popup eszlelve, bezaras...")
+        not_now_btn = WebDriverWait(driver, 3).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, ".ups-notNowButton"))
+        )
+        not_now_btn.click()
+        log_success("Policy popup bezarva (Not Now)")
+        time.sleep(1)
+    except Exception as e:
+        log_step("Policy", f"Nem sikerult bezarni a policy popupot: {str(e)}")
+
 def close_chat_if_present(driver):
     try:
         chat = driver.find_elements(By.CSS_SELECTOR, "div.WACBotContainer")
@@ -362,22 +407,6 @@ def close_chat_if_present(driver):
         time.sleep(1)
     except Exception as e:
         log_step("Chat", f"Nem sikerult bezarni a chatet: {str(e)}")
-
-def close_policy_popup(driver):
-    """Bezárja a 'Make Deliveries Work for You!' felugró ablakot."""
-    try:
-        popup = driver.find_elements(By.CSS_SELECTOR, "#ups-updateProfile-popup-container")
-        if not popup:
-            return
-        log_step("Policy", "Policy popup eszlelve, bezaras...")
-        not_now_btn = WebDriverWait(driver, 3).until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR, ".ups-notNowButton"))
-        )
-        not_now_btn.click()
-        log_success("Policy popup bezarva (Not Now)")
-        time.sleep(1)
-    except Exception as e:
-        log_step("Policy", f"Nem sikerult bezarni a policy popupot: {str(e)}")
 
 def handle_chrome_print(driver):
     try:
@@ -519,7 +548,7 @@ def login_if_needed(driver, username, password):
             
             log_success("Bejelentkezes sikeres")
             time.sleep(3)
-            
+            handle_mfa_popup(driver)  # 🔥 MFA kezelése bejelentkezés után
             return True
         else:
             log_step("Login", "Mar be van jelentkezve")
@@ -547,7 +576,7 @@ def main():
     UPS_PASSWORD = sys.argv[5]
 
     log_message("="*60)
-    log_message("PYTHON SCRIPT FUT")
+    log_message("PYTHON SCRIPT FUT (ANTI-DETECTION + MFA)")
     log_message("="*60)
     log_message(f"Excel: {excel_path}")
     log_message(f"Mappa: {download_folder}")
@@ -597,24 +626,140 @@ def main():
     update_progress(0, total)
     log_message("")
 
-    log_message("[2/5] Böngésző indítása...")
+    log_message("[2/5] Böngésző indítása (ANTI-DETECTION MODE)...")
     chrome_options = Options()
+    
+    # Letöltési beállítások
     prefs = {
         "download.default_directory": download_folder,
         "download.prompt_for_download": False,
         "download.directory_upgrade": True,
         "plugins.always_open_pdf_externally": True,
-        "profile.default_content_setting_values.automatic_downloads": 1
+        "profile.default_content_setting_values.automatic_downloads": 1,
+        "credentials_enable_service": False
     }
     chrome_options.add_experimental_option("prefs", prefs)
+
+    # ============================================
+    # TELJES ANTI-DETECTION CSOMAG
+    # ============================================
+    
+    # Alap automation flag-ek eltüntetése
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option('useAutomationExtension', False)
+    
+    # Sandbox és memória beállítások
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    
+    # GPU és extensionök letiltása
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--disable-extensions")
+    chrome_options.add_argument("--disable-software-rasterizer")
+    
+    # Valósághű user-agent
+    chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+    
+    # Nyelvi és időzóna beállítások
+    chrome_options.add_argument("--lang=hu-HU")
+    chrome_options.add_argument("--accept-lang=hu-HU,hu;q=0.9,en-US;q=0.8,en;q=0.7")
+    
+    # Ablakméret
+    chrome_options.add_argument("--window-size=1920,1080")
+    chrome_options.add_argument("--start-maximized")
+    
+    # További flag-ek
+    chrome_options.add_argument("--disable-client-side-phishing-detection")
+    chrome_options.add_argument("--disable-crash-reporter")
+    chrome_options.add_argument("--disable-notifications")
+    chrome_options.add_argument("--disable-popup-blocking")
+    chrome_options.add_argument("--disable-sync")
+    chrome_options.add_argument("--no-first-run")
+    chrome_options.add_argument("--no-default-browser-check")
+    chrome_options.add_argument("--disable-logging")
+    chrome_options.add_argument("--log-level=3")
 
     try:
         service = Service(ChromeDriverManager().install())
         driver = webdriver.Chrome(service=service, options=chrome_options)
-        log_success("Bongeszo sikeresen elindult")
+        
+        # ============================================
+        # JAVASCRIPT-BEÁLLÍTÁSOK (futás közben)
+        # ============================================
+        
+        # navigator.webdriver elrejtése és egyéb property-k
+        driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+            "source": """
+                // WebDriver property eltüntetése
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined
+                });
+                
+                // Valósághű plugin-ek
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => [1, 2, 3, 4, 5]
+                });
+                
+                // Valósághű nyelvek
+                Object.defineProperty(navigator, 'languages', {
+                    get: () => ['hu-HU', 'hu', 'en-US', 'en']
+                });
+                
+                // Chrome verzió elrejtése
+                Object.defineProperty(navigator, 'platform', {
+                    get: () => 'Win32'
+                });
+                
+                // Hardware konkurencia
+                Object.defineProperty(navigator, 'hardwareConcurrency', {
+                    get: () => 8
+                });
+                
+                // Device memory
+                Object.defineProperty(navigator, 'deviceMemory', {
+                    get: () => 8
+                });
+                
+                // Connection típus
+                Object.defineProperty(navigator, 'connection', {
+                    get: () => ({
+                        effectiveType: '4g',
+                        rtt: 50,
+                        downlink: 10,
+                        saveData: false
+                    })
+                });
+                
+                // Permission query
+                const originalQuery = window.navigator.permissions.query;
+                window.navigator.permissions.query = (parameters) => (
+                    parameters.name === 'notifications' ?
+                        Promise.resolve({ state: Notification.permission }) :
+                        originalQuery(parameters)
+                );
+            """
+        })
+        
+        # WebGL vendor és renderer elrejtése
+        try:
+            driver.execute_script("""
+                const getParameter = WebGLRenderingContext.prototype.getParameter;
+                WebGLRenderingContext.prototype.getParameter = function(parameter) {
+                    if (parameter === 37445) {
+                        return 'Intel Inc.';
+                    }
+                    if (parameter === 37446) {
+                        return 'Intel Iris OpenGL Engine';
+                    }
+                    return getParameter(parameter);
+                };
+            """)
+        except:
+            pass
+        
+        log_success("Bongeszo sikeresen elindult teljes anti-detection modban")
+        
     except Exception as e:
         log_error("Bongeszo inditasi hiba", str(e)); return 1
 
@@ -671,21 +816,27 @@ def main():
                 track_btn.click()
                 log_success("Track gomb megnyomva")
                 
-                log_step("3b", "Varakozas az oldal valtozasara...")
-                WebDriverWait(driver, 15).until(
-                    EC.url_changes(driver.current_url)
-                )
-                log_success("URL megvaltozott, keresesi eredmenyek betoltve")
+                # MFA kezelése (ha itt jönne elő)
+                handle_mfa_popup(driver)
                 
-                time.sleep(2)
+                # Várj a POD link megjelenésére
+                try:
+                    WebDriverWait(driver, 30).until(
+                        EC.presence_of_element_located((By.ID, "stApp_btnProofOfDeliveryonDetails"))
+                    )
+                    log_success("POD gomb megjelent, oldal betoltve")
+                except TimeoutException:
+                    log_error("POD gomb nem jelent meg 30 mp alatt, kihagyva")
+                    continue
                 
             except Exception as e:
                 log_error("Hiba a track gomb kezelésekor", str(e))
                 continue
 
-            # 🔥 ÚJ: Policy popup kezelése
+            # Policy popup kezelése
             close_policy_popup(driver)
             
+            # Chat kezelése
             close_chat_if_present(driver)
 
             log_step("3c", "Proof of Delivery link keresese...")
@@ -696,7 +847,7 @@ def main():
             ]
             pod_link = None
             for by, sel, desc in pod_selectors:
-                el = check_element(driver, by, sel, 20, desc)
+                el = check_element(driver, by, sel, 5, desc)
                 if el:
                     pod_link = el; used = desc; break
             if not pod_link:
@@ -791,7 +942,7 @@ if __name__ == "__main__":
     $utf8WithBom = New-Object System.Text.UTF8Encoding $true
     [System.IO.File]::WriteAllText($tempPython, $pythonScript, $utf8WithBom)
     
-    Write-Log "Python script futtatasa..."
+    Write-Log "Python script futtatasa (anti-detection + MFA mod)..."
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = "python"
     $psi.Arguments = "`"$tempPython`" `"$url`" `"$excelPath`" `"$downloadFolder`" `"$username`" `"$password`""
