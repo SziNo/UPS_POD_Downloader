@@ -240,7 +240,7 @@ $startButton.Add_Click({
     Write-Log "UPS URL: $url"
     Write-Log ""
     
-    # Python script – CSATLAKOZÁS FUTÓ CHROME-HOZ
+    # Python script – CSATLAKOZÁS FUTÓ CHROME-HOZ, POPUP KEZELÉSSEL
     $pythonScript = @'
 import sys
 import pandas as pd
@@ -289,25 +289,57 @@ def check_element(driver, by, selector, timeout=5, description=""):
         log_error(f"Hiba a kereseskor: {description}", str(e))
         return None
 
+def close_policy_popup(driver):
+    """Bezárja a 'Make Deliveries Work for You!' felugró ablakot."""
+    try:
+        # Megnézzük, hogy van-e ilyen popup
+        popup = driver.find_elements(By.CSS_SELECTOR, "#ups-updateProfile-popup-container")
+        if not popup:
+            return
+        
+        log_step("Policy", "Policy popup észlelve, bezárás...")
+        
+        # "Not Now" gomb keresése
+        not_now_btn = WebDriverWait(driver, 3).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, ".ups-notNowButton"))
+        )
+        not_now_btn.click()
+        log_success("Policy popup bezárva (Not Now)")
+        time.sleep(1)
+        
+    except Exception as e:
+        log_step("Policy", f"Nem sikerült bezárni a policy popupot: {str(e)}")
+
 def close_chat_if_present(driver):
+    """Bezárja az UPS Assistant chat ablakot, ha megjelenik."""
     try:
         chat = driver.find_elements(By.CSS_SELECTOR, "div.WACBotContainer")
         if not chat:
             return
-        log_step("Chat", "UPS Assistant chat eszlelve, bezaras...")
+        
+        log_step("Chat", "UPS Assistant chat észlelve, bezárás...")
+        
+        # Bezárás gomb (End chat and close)
         close_btn = WebDriverWait(driver, 3).until(
             EC.element_to_be_clickable((By.CSS_SELECTOR, "button.WACHeader__CloseAndRestartButton"))
         )
         close_btn.click()
         time.sleep(1)
-        yes_btn = WebDriverWait(driver, 3).until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR, "button.WACConfirmModal__YesButton"))
-        )
-        yes_btn.click()
-        log_success("Chat bezarva")
+        
+        # Megerősítő modal "Yes" gomb
+        try:
+            yes_btn = WebDriverWait(driver, 3).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "button.WACConfirmModal__YesButton"))
+            )
+            yes_btn.click()
+            log_success("Chat bezárva (megerősítve)")
+        except:
+            log_success("Chat bezárva (nem kellett megerősítés)")
+            
         time.sleep(1)
+        
     except Exception as e:
-        log_step("Chat", f"Nem sikerult bezarni a chatet: {str(e)}")
+        log_step("Chat", f"Nem sikerült bezárni a chatet: {str(e)}")
 
 def handle_chrome_print(driver):
     try:
@@ -354,7 +386,7 @@ def main():
     download_folder = sys.argv[3]
 
     log_message("="*60)
-    log_message("PYTHON SCRIPT FUT")
+    log_message("PYTHON SCRIPT FUT (DEBUG MODE)")
     log_message("="*60)
     log_message(f"Excel: {excel_path}")
     log_message(f"Mappa: {download_folder}")
@@ -379,6 +411,7 @@ def main():
     except Exception as e:
         log_error("Excel megnyitasi hiba (openpyxl)", str(e)); return 1
 
+    # Feldolgozandó sorok gyűjtése
     to_process_indices = []
     for idx, row in df.iterrows():
         excel_row = idx + 2
@@ -403,14 +436,11 @@ def main():
     update_progress(0, total)
     log_message("")
 
-    # =========================================
-    # 2. LÉPÉS: CSATLAKOZÁS FUTÓ CHROME-HOZ
-    # =========================================
+    # 2. Csatlakozás a futó Chrome-hoz
     log_message("[2/5] Csatlakozas a futo Chrome-hoz...")
     log_message("  (Ellenorizd, hogy fut-e a 'POD Chrome' debug modban!)")
     
     chrome_options = Options()
-    # 🔥 A KULCS: csatlakozás a futó debug módú Chrome-hoz
     chrome_options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
     
     try:
@@ -440,17 +470,8 @@ def main():
         log_error("Tanacs", "3. Ne zarj be mas Chrome ablakokat, ami a 9222-es portot hasznalja")
         return 1
 
+    # 3. Tracking számok feldolgozása
     try:
-        # BEJELENTKEZÉS HA KELL (de lehet, hogy már be vagy jelentkezve)
-        # A bejelentkezési adatokat itt kell megadni, de mivel a felhasználó már be van jelentkezve a "POD Chrome"-ban, lehet, hogy nem kell
-        """
-        # Ha mégis kell, itt lehet bejelentkeztetni:
-        from login_module import login_if_needed  # Ezt majd külön megírjuk
-        login_if_needed(driver)
-        """
-        
-        log_message("")
-
         processed = 0
         success_count = 0
         zold_fill = PatternFill(start_color=GREEN_COLOR, end_color=GREEN_COLOR, fill_type='solid')
@@ -464,6 +485,7 @@ def main():
             log_message(f"Feldolgozas: {tracking} -> {new_name} (Excel sor: {excel_row})")
             log_message("-"*50)
 
+            # 3a. Tracking szám mező keresése
             log_step("3a", "Tracking szám mező keresése...")
             track_selectors = [
                 (By.ID, "stApp_trackingNumber", "ID: stApp_trackingNumber"),
@@ -483,6 +505,7 @@ def main():
             log_success(f"Tracking szám beirva: '{tracking}' (hossz: {len(tracking)})")
             time.sleep(1)
 
+            # 3b. Track gomb keresése
             log_step("3b", "Track gomb keresése...")
             try:
                 track_btn = WebDriverWait(driver, 10).until(
@@ -505,8 +528,13 @@ def main():
                 log_error("Hiba a track gomb kezelésekor", str(e))
                 continue
 
+            # 3c. Policy popup kezelése (új!)
+            close_policy_popup(driver)
+            
+            # 3d. Chat kezelése
             close_chat_if_present(driver)
 
+            # 3e. Proof of Delivery link keresése
             log_step("3c", "Proof of Delivery link keresese...")
             pod_selectors = [
                 (By.ID, "stApp_btnProofOfDeliveryonDetails", "ID: stApp_btnProofOfDeliveryonDetails"),
@@ -525,6 +553,7 @@ def main():
             pod_link.click()
             log_success(f"POD link megnyitva ({used})")
 
+            # 3f. Új ablakra váltás
             log_step("3d", "Ablakvaltas...")
             try:
                 WebDriverWait(driver, 5).until(lambda d: len(d.window_handles) > 1)
@@ -536,6 +565,7 @@ def main():
             except:
                 log_step("Ablak", "Nincs uj ablak, maradunk")
 
+            # 3g. Print this page keresése
             log_step("3e", "Print this page kereses...")
             print_selectors = [
                 (By.ID, "stApp_POD_btnPrint", "ID: stApp_POD_btnPrint"),
@@ -551,10 +581,13 @@ def main():
                 log_success(f"Print link megnyitva ({used})")
                 time.sleep(2)
 
+            # 3h. Print ablak (Chrome) kezelése
             handle_chrome_print(driver)
 
+            # Vissza a főablakra
             driver.switch_to.window(main_window)
 
+            # 3i. Letöltött fájl keresése és átnevezése
             log_step("3f", "Letoltott fajl kereses...")
             time.sleep(3)
             files = os.listdir(download_folder)
@@ -567,6 +600,7 @@ def main():
                 shutil.move(latest, new_path)
                 log_success(f"Fajl mentve: {new_name}.pdf")
                 
+                # Sor zöldre színezése
                 for col in range(1, 6):
                     ws.cell(row=excel_row, column=col).fill = zold_fill
                 log_success(f"Sor {excel_row} zoldre szinezve (A-E oszlopok, #{GREEN_COLOR})")
@@ -579,6 +613,7 @@ def main():
             update_progress(processed, total)
             log_success(f"Feldolgozva: {processed}/{total}")
 
+        # 4. Excel mentése
         log_message("\n[4/5] Excel fajl mentese...")
         output_path = excel_path.replace('.xlsx', '_FELDOLGOZOTT.xlsx')
         if output_path == excel_path:
@@ -598,8 +633,10 @@ def main():
         log_error("Varatlan hiba", str(e)); return 1
     finally:
         if driver:
-            # Nem zárjuk be a böngészőt, mert a felhasználó nyitotta!
             log_message("Megjegyzes: A bongeszot nem zarjuk be, mert a felhasznalo nyitotta.")
+
+if __name__ == "__main__":
+    sys.exit(main())
 '@
     
     $tempPython = [System.IO.Path]::GetTempFileName() + ".py"

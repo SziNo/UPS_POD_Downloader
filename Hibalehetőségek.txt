@@ -1,14 +1,16 @@
-- Csak VPN nélkül megy a pip installok és az app maga is.
+1. Csak VPN nélkül megy a pip installok és az app maga is.
 
-Keresd meg a Chrome-ot: Nyomd meg a Windows billentyűt és írd be, hogy chrome.
+2. Keresd meg a Chrome-ot: Nyomd meg a Windows billentyűt és írd be, hogy chrome.
 
-Fájlhely megnyitása: Amikor megjelenik a Google Chrome a keresési találatok között, jobb klikk rá, és válaszd a "Fájlhely megnyitása" menüpontot. Ezzel megnyílik a mappa, ahol a chrome.exe található.
+Fájlhely megnyitása: Amikor megjelenik a Google Chrome a keresési találatok között, jobb klikk rá, és válaszd a "Fájlhely megnyitása" menüpontot. 
+Ezzel megnyílik a mappa, ahol a chrome.exe található.
 
 Másold ki a címsorból: A megnyílt mappában nézz fel a címsorba. Ott látod a teljes elérési utat, például: C:\Program Files\Google\Chrome\Application.
 
 Kattints a címsorba, a teljes útvonal kijelölődik. Nyomj Ctrl + C-t a másoláshoz.
 
-Most, hogy megvan a mappa elérési útja, már csak egy dolgod van hátra: az asztalon létrehozott parancsikon "Cél" mezőjébe illeszd be ezt az utat, és told hozzá a fájl nevét (chrome.exe) és a paramétert.
+Most, hogy megvan a mappa elérési útja, már csak egy dolgod van hátra: az asztalon létrehozott parancsikon "Cél" mezőjébe illeszd be ezt az utat, 
+és told hozzá a fájl nevét (chrome.exe) és a paramétert.
 
 Hozd létre a parancsikont az asztalon (jobb klikk → Új → Parancsikon).
 
@@ -20,4 +22,9 @@ Tedd idézőjelbe az egészet, ha még nincs benne: "C:\Program Files\Google\Chr
 A végére, az utolsó idézőjel után nyomj egy space-t, és írd be a paramétert: --remote-debugging-port=9222
 
 A teljes "Cél:" mező végül így fog kinézni:
-"C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222
+"C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir=C:\SeleniumProfile
+
+--remote-debugging-port=9222: Engedélyezi a távoli csatlakozást.
+
+--user-data-dir=C:\SeleniumProfile: Létrehoz (vagy használ) egy teljesen új, üres profilt a C:\SeleniumProfile mappában. 
+Ez a profil nem próbálja meg visszaállítani az előző munkamenetet.
