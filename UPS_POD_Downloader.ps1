@@ -1,7 +1,6 @@
 ﻿# UPS_POD_Downloader.ps1
 # UPS Proof of Delivery automatizált letöltő
 # Futtatás: Jobb klikk -> Run with PowerShell
-# FIGYELEM: Használat előtt indítsd el a "POD Chrome" ikont!
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -9,7 +8,7 @@ Add-Type -AssemblyName System.Drawing
 # GUI létrehozása
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "UPS POD Letöltő"
-$form.Size = New-Object System.Drawing.Size(650, 700)
+$form.Size = New-Object System.Drawing.Size(650, 750)
 $form.StartPosition = "CenterScreen"
 $form.BackColor = "White"
 
@@ -25,32 +24,32 @@ $form.Controls.Add($headerLabel)
 # Információs panel
 $infoPanel = New-Object System.Windows.Forms.Panel
 $infoPanel.Location = New-Object System.Drawing.Point(10, 50)
-$infoPanel.Size = New-Object System.Drawing.Size(600, 100)
+$infoPanel.Size = New-Object System.Drawing.Size(600, 80)
 $infoPanel.BorderStyle = "FixedSingle"
 $infoPanel.BackColor = "LightYellow"
 
 $infoLabel = New-Object System.Windows.Forms.Label
 $infoLabel.Location = New-Object System.Drawing.Point(10, 5)
-$infoLabel.Size = New-Object System.Drawing.Size(580, 90)
+$infoLabel.Size = New-Object System.Drawing.Size(580, 70)
 $infoLabel.Text = "Használat:`n" +
-                  "1. Kattints a 'POD Chrome' ikonra (debug módú Chrome)`n" +
-                  "2. Ebben a Chrome-ban jelentkezz be az UPS fiókodba`n" +
-                  "3. Hagyd nyitva ezt a Chrome ablakot!`n" +
-                  "4. Indítsd el ezt a scriptet"
+                  "1. Add meg az UPS URL-t (ahol a tracking mező van)`n" +
+                  "2. Válaszd ki az Excel fájlt és a letöltési mappát`n" +
+                  "3. Add meg az UPS felhasználóneved és jelszavad`n" +
+                  "4. Kattints a Letöltés indítása gombra"
 $infoLabel.Font = New-Object System.Drawing.Font("Arial", 9)
 $infoPanel.Controls.Add($infoLabel)
 $form.Controls.Add($infoPanel)
 
 # UPS URL
 $urlLabel = New-Object System.Windows.Forms.Label
-$urlLabel.Location = New-Object System.Drawing.Point(10, 160)
+$urlLabel.Location = New-Object System.Drawing.Point(10, 140)
 $urlLabel.Size = New-Object System.Drawing.Size(120, 25)
 $urlLabel.Text = "UPS URL:"
 $urlLabel.Font = New-Object System.Drawing.Font("Arial", 10, [System.Drawing.FontStyle]::Bold)
 $form.Controls.Add($urlLabel)
 
 $urlBox = New-Object System.Windows.Forms.TextBox
-$urlBox.Location = New-Object System.Drawing.Point(140, 160)
+$urlBox.Location = New-Object System.Drawing.Point(140, 140)
 $urlBox.Size = New-Object System.Drawing.Size(470, 25)
 $urlBox.Text = "https://www.ups.com/track?loc=en_US&requester=ST/"
 $urlBox.Font = New-Object System.Drawing.Font("Arial", 10)
@@ -58,20 +57,20 @@ $form.Controls.Add($urlBox)
 
 # Excel fájl
 $excelLabel = New-Object System.Windows.Forms.Label
-$excelLabel.Location = New-Object System.Drawing.Point(10, 200)
+$excelLabel.Location = New-Object System.Drawing.Point(10, 180)
 $excelLabel.Size = New-Object System.Drawing.Size(120, 25)
 $excelLabel.Text = "Excel fájl:"
 $excelLabel.Font = New-Object System.Drawing.Font("Arial", 10, [System.Drawing.FontStyle]::Bold)
 $form.Controls.Add($excelLabel)
 
 $excelBox = New-Object System.Windows.Forms.TextBox
-$excelBox.Location = New-Object System.Drawing.Point(140, 200)
+$excelBox.Location = New-Object System.Drawing.Point(140, 180)
 $excelBox.Size = New-Object System.Drawing.Size(370, 25)
 $excelBox.Font = New-Object System.Drawing.Font("Arial", 10)
 $form.Controls.Add($excelBox)
 
 $excelButton = New-Object System.Windows.Forms.Button
-$excelButton.Location = New-Object System.Drawing.Point(520, 200)
+$excelButton.Location = New-Object System.Drawing.Point(520, 180)
 $excelButton.Size = New-Object System.Drawing.Size(90, 25)
 $excelButton.Text = "Tallózás"
 $excelButton.Font = New-Object System.Drawing.Font("Arial", 9)
@@ -88,21 +87,21 @@ $form.Controls.Add($excelButton)
 
 # Letöltési mappa
 $folderLabel = New-Object System.Windows.Forms.Label
-$folderLabel.Location = New-Object System.Drawing.Point(10, 240)
+$folderLabel.Location = New-Object System.Drawing.Point(10, 220)
 $folderLabel.Size = New-Object System.Drawing.Size(120, 25)
 $folderLabel.Text = "Letöltési mappa:"
 $folderLabel.Font = New-Object System.Drawing.Font("Arial", 10, [System.Drawing.FontStyle]::Bold)
 $form.Controls.Add($folderLabel)
 
 $folderBox = New-Object System.Windows.Forms.TextBox
-$folderBox.Location = New-Object System.Drawing.Point(140, 240)
+$folderBox.Location = New-Object System.Drawing.Point(140, 220)
 $folderBox.Size = New-Object System.Drawing.Size(370, 25)
 $folderBox.Font = New-Object System.Drawing.Font("Arial", 10)
 $folderBox.Text = [Environment]::GetFolderPath("Desktop")
 $form.Controls.Add($folderBox)
 
 $folderButton = New-Object System.Windows.Forms.Button
-$folderButton.Location = New-Object System.Drawing.Point(520, 240)
+$folderButton.Location = New-Object System.Drawing.Point(520, 220)
 $folderButton.Size = New-Object System.Drawing.Size(90, 25)
 $folderButton.Text = "Tallózás"
 $folderButton.Font = New-Object System.Drawing.Font("Arial", 9)
@@ -117,16 +116,46 @@ $folderButton.Add_Click({
 })
 $form.Controls.Add($folderButton)
 
+# ============================================
+# UPS FELHASZNÁLÓNÉV ÉS JELSZÓ
+# ============================================
+$userLabel = New-Object System.Windows.Forms.Label
+$userLabel.Location = New-Object System.Drawing.Point(10, 260)
+$userLabel.Size = New-Object System.Drawing.Size(120, 25)
+$userLabel.Text = "UPS Username:"
+$userLabel.Font = New-Object System.Drawing.Font("Arial", 10, [System.Drawing.FontStyle]::Bold)
+$form.Controls.Add($userLabel)
+
+$userBox = New-Object System.Windows.Forms.TextBox
+$userBox.Location = New-Object System.Drawing.Point(140, 260)
+$userBox.Size = New-Object System.Drawing.Size(470, 25)
+$userBox.Font = New-Object System.Drawing.Font("Arial", 10)
+$form.Controls.Add($userBox)
+
+$passLabel = New-Object System.Windows.Forms.Label
+$passLabel.Location = New-Object System.Drawing.Point(10, 300)
+$passLabel.Size = New-Object System.Drawing.Size(120, 25)
+$passLabel.Text = "UPS Password:"
+$passLabel.Font = New-Object System.Drawing.Font("Arial", 10, [System.Drawing.FontStyle]::Bold)
+$form.Controls.Add($passLabel)
+
+$passBox = New-Object System.Windows.Forms.TextBox
+$passBox.Location = New-Object System.Drawing.Point(140, 300)
+$passBox.Size = New-Object System.Drawing.Size(470, 25)
+$passBox.PasswordChar = '*'
+$passBox.Font = New-Object System.Drawing.Font("Arial", 10)
+$form.Controls.Add($passBox)
+
 # Ellenőrző lista
 $checkLabel = New-Object System.Windows.Forms.Label
-$checkLabel.Location = New-Object System.Drawing.Point(10, 280)
+$checkLabel.Location = New-Object System.Drawing.Point(10, 340)
 $checkLabel.Size = New-Object System.Drawing.Size(600, 20)
 $checkLabel.Text = "Az Excel-ben szükséges oszlopok:"
 $checkLabel.Font = New-Object System.Drawing.Font("Arial", 10, [System.Drawing.FontStyle]::Bold)
 $form.Controls.Add($checkLabel)
 
 $checkList = New-Object System.Windows.Forms.ListBox
-$checkList.Location = New-Object System.Drawing.Point(10, 300)
+$checkList.Location = New-Object System.Drawing.Point(10, 360)
 $checkList.Size = New-Object System.Drawing.Size(600, 60)
 $checkList.Font = New-Object System.Drawing.Font("Arial", 9)
 $checkList.Items.AddRange(@(
@@ -140,15 +169,15 @@ $form.Controls.Add($checkList)
 
 # Naplózó mező
 $logLabel = New-Object System.Windows.Forms.Label
-$logLabel.Location = New-Object System.Drawing.Point(10, 380)
+$logLabel.Location = New-Object System.Drawing.Point(10, 430)
 $logLabel.Size = New-Object System.Drawing.Size(600, 20)
 $logLabel.Text = "Folyamat napló:"
 $logLabel.Font = New-Object System.Drawing.Font("Arial", 10, [System.Drawing.FontStyle]::Bold)
 $form.Controls.Add($logLabel)
 
 $logBox = New-Object System.Windows.Forms.TextBox
-$logBox.Location = New-Object System.Drawing.Point(10, 400)
-$logBox.Size = New-Object System.Drawing.Size(600, 120)
+$logBox.Location = New-Object System.Drawing.Point(10, 450)
+$logBox.Size = New-Object System.Drawing.Size(600, 100)
 $logBox.Multiline = $true
 $logBox.ScrollBars = "Vertical"
 $logBox.ReadOnly = $true
@@ -159,7 +188,7 @@ $form.Controls.Add($logBox)
 
 # Progress bar
 $progressBar = New-Object System.Windows.Forms.ProgressBar
-$progressBar.Location = New-Object System.Drawing.Point(10, 540)
+$progressBar.Location = New-Object System.Drawing.Point(10, 560)
 $progressBar.Size = New-Object System.Drawing.Size(280, 25)
 $form.Controls.Add($progressBar)
 
@@ -170,7 +199,7 @@ $script:stopRequested = $false
 $script:pythonProcess = $null
 
 $stopButton = New-Object System.Windows.Forms.Button
-$stopButton.Location = New-Object System.Drawing.Point(300, 540)
+$stopButton.Location = New-Object System.Drawing.Point(300, 560)
 $stopButton.Size = New-Object System.Drawing.Size(90, 25)
 $stopButton.Text = "STOP Megállítás"
 $stopButton.BackColor = "Orange"
@@ -190,13 +219,24 @@ $form.Controls.Add($stopButton)
 
 # Indítás gomb
 $startButton = New-Object System.Windows.Forms.Button
-$startButton.Location = New-Object System.Drawing.Point(400, 540)
+$startButton.Location = New-Object System.Drawing.Point(400, 560)
 $startButton.Size = New-Object System.Drawing.Size(110, 25)
 $startButton.Text = "Letöltés indítása"
 $startButton.BackColor = "ForestGreen"
 $startButton.ForeColor = "White"
 $startButton.Font = New-Object System.Drawing.Font("Arial", 9, [System.Drawing.FontStyle]::Bold)
 $form.Controls.Add($startButton)
+
+# Kilépés gomb
+$exitButton = New-Object System.Windows.Forms.Button
+$exitButton.Location = New-Object System.Drawing.Point(520, 600)
+$exitButton.Size = New-Object System.Drawing.Size(90, 25)
+$exitButton.Text = "Kilépés"
+$exitButton.BackColor = "DarkRed"
+$exitButton.ForeColor = "White"
+$exitButton.Font = New-Object System.Drawing.Font("Arial", 9, [System.Drawing.FontStyle]::Bold)
+$exitButton.Add_Click({ $form.Close() })
+$form.Controls.Add($exitButton)
 
 function Write-Log {
     param($Message)
@@ -217,7 +257,10 @@ $startButton.Add_Click({
     $url = $urlBox.Text.Trim()
     $excelPath = $excelBox.Text.Trim()
     $downloadFolder = $folderBox.Text.Trim()
+    $username = $userBox.Text.Trim()
+    $password = $passBox.Text.Trim()
     
+    # Ellenőrzések
     if (-not $url) {
         [System.Windows.Forms.MessageBox]::Show("Add meg az UPS URL-t!", "Hiba", "OK", "Error")
         $startButton.Enabled = $true; $stopButton.Enabled = $false; return
@@ -230,6 +273,14 @@ $startButton.Add_Click({
         [System.Windows.Forms.MessageBox]::Show("Érvényes letöltési mappát kell kiválasztani!", "Hiba", "OK", "Error")
         $startButton.Enabled = $true; $stopButton.Enabled = $false; return
     }
+    if (-not $username) {
+        [System.Windows.Forms.MessageBox]::Show("Add meg az UPS felhasználóneved!", "Hiba", "OK", "Error")
+        $startButton.Enabled = $true; $stopButton.Enabled = $false; return
+    }
+    if (-not $password) {
+        [System.Windows.Forms.MessageBox]::Show("Add meg az UPS jelszavad!", "Hiba", "OK", "Error")
+        $startButton.Enabled = $true; $stopButton.Enabled = $false; return
+    }
     
     Write-Log "==========================================="
     Write-Log "UPS POD Letöltő indítása"
@@ -238,13 +289,10 @@ $startButton.Add_Click({
     Write-Log "Excel: $excelPath"
     Write-Log "Letöltési mappa: $downloadFolder"
     Write-Log "UPS URL: $url"
+    Write-Log "Felhasznalo: $username"
     Write-Log ""
     
-    # 🔥 Várakozás a Chrome debug port inicializálására
-    Write-Log "Varakozas a Chrome debug port inicializalasara (3 mp)..."
-    Start-Sleep -Seconds 3
-    
-    # Python script – CSATLAKOZÁS FUTÓ CHROME-HOZ, POPUP KEZELÉSSEL
+    # Python script – RÉGI, MŰKÖDŐ VERZIÓ + POLICY POPUP
     $pythonScript = @'
 import sys
 import pandas as pd
@@ -256,6 +304,8 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, WebDriverException
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill
@@ -293,57 +343,41 @@ def check_element(driver, by, selector, timeout=5, description=""):
         log_error(f"Hiba a kereseskor: {description}", str(e))
         return None
 
-def close_policy_popup(driver):
-    """Bezárja a 'Make Deliveries Work for You!' felugró ablakot."""
-    try:
-        # Megnézzük, hogy van-e ilyen popup
-        popup = driver.find_elements(By.CSS_SELECTOR, "#ups-updateProfile-popup-container")
-        if not popup:
-            return
-        
-        log_step("Policy", "Policy popup észlelve, bezárás...")
-        
-        # "Not Now" gomb keresése
-        not_now_btn = WebDriverWait(driver, 3).until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR, ".ups-notNowButton"))
-        )
-        not_now_btn.click()
-        log_success("Policy popup bezárva (Not Now)")
-        time.sleep(1)
-        
-    except Exception as e:
-        log_step("Policy", f"Nem sikerült bezárni a policy popupot: {str(e)}")
-
 def close_chat_if_present(driver):
-    """Bezárja az UPS Assistant chat ablakot, ha megjelenik."""
     try:
         chat = driver.find_elements(By.CSS_SELECTOR, "div.WACBotContainer")
         if not chat:
             return
-        
-        log_step("Chat", "UPS Assistant chat észlelve, bezárás...")
-        
-        # Bezárás gomb (End chat and close)
+        log_step("Chat", "UPS Assistant chat eszlelve, bezaras...")
         close_btn = WebDriverWait(driver, 3).until(
             EC.element_to_be_clickable((By.CSS_SELECTOR, "button.WACHeader__CloseAndRestartButton"))
         )
         close_btn.click()
         time.sleep(1)
-        
-        # Megerősítő modal "Yes" gomb
-        try:
-            yes_btn = WebDriverWait(driver, 3).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, "button.WACConfirmModal__YesButton"))
-            )
-            yes_btn.click()
-            log_success("Chat bezárva (megerősítve)")
-        except:
-            log_success("Chat bezárva (nem kellett megerősítés)")
-            
+        yes_btn = WebDriverWait(driver, 3).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, "button.WACConfirmModal__YesButton"))
+        )
+        yes_btn.click()
+        log_success("Chat bezarva")
         time.sleep(1)
-        
     except Exception as e:
-        log_step("Chat", f"Nem sikerült bezárni a chatet: {str(e)}")
+        log_step("Chat", f"Nem sikerult bezarni a chatet: {str(e)}")
+
+def close_policy_popup(driver):
+    """Bezárja a 'Make Deliveries Work for You!' felugró ablakot."""
+    try:
+        popup = driver.find_elements(By.CSS_SELECTOR, "#ups-updateProfile-popup-container")
+        if not popup:
+            return
+        log_step("Policy", "Policy popup eszlelve, bezaras...")
+        not_now_btn = WebDriverWait(driver, 3).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, ".ups-notNowButton"))
+        )
+        not_now_btn.click()
+        log_success("Policy popup bezarva (Not Now)")
+        time.sleep(1)
+    except Exception as e:
+        log_step("Policy", f"Nem sikerult bezarni a policy popupot: {str(e)}")
 
 def handle_chrome_print(driver):
     try:
@@ -373,6 +407,127 @@ def handle_chrome_print(driver):
     except Exception as e:
         log_error("Hiba a print ablak kezelesekor", str(e))
 
+def accept_cookies(driver):
+    """Cookie-k automatikus elfogadása - kis banner + nagy OneTrust"""
+    try:
+        # 1. KIS BANNER
+        banner_selectors = [
+            (By.ID, "onetrust-accept-btn-handler", "Allow All Cookies (banner)"),
+            (By.ID, "onetrust-reject-all-handler", "Essential Only (banner)"),
+            (By.ID, "onetrust-pc-btn-handler", "Cookie Settings (banner)")
+        ]
+        
+        for by, selector, description in banner_selectors:
+            try:
+                btn = WebDriverWait(driver, 2).until(
+                    EC.element_to_be_clickable((by, selector))
+                )
+                btn.click()
+                log_success(f"Cookie banner kezelve: {description}")
+                time.sleep(1)
+                return True
+            except:
+                continue
+        
+        # 2. NAGY ONETRUST ABLAK
+        big_selectors = [
+            (By.ID, "accept-recommended-btn-handler", "Allow All (big)"),
+            (By.CSS_SELECTOR, ".save-preference-btn-handler", "Confirm Choices (big)"),
+            (By.ID, "close-pc-btn-handler", "Close X (big)")
+        ]
+        
+        for by, selector, description in big_selectors:
+            try:
+                btn = WebDriverWait(driver, 2).until(
+                    EC.element_to_be_clickable((by, selector))
+                )
+                btn.click()
+                log_success(f"Cookie ablak kezelve: {description}")
+                time.sleep(1)
+                return True
+            except:
+                continue
+        
+        log_step("Cookie", "Nincs cookie elfogado ablak")
+        return False
+    except Exception as e:
+        log_step("Cookie", f"Cookie hiba: {str(e)}")
+        return False
+
+def login_if_needed(driver, username, password):
+    """
+    Bejelentkezés automatizálása - a GUI-ból kapott username/password használatával.
+    """
+    try:
+        # 1. LÉPÉS: "Log in" gomb keresése
+        sign_in_selectors = [
+            "//a[contains(text(),'Sign in')]",
+            "//a[contains(text(),'Log in')]",
+            "//a[contains(text(),'Bejelentkezés')]",
+            "//a[contains(@href,'/account/login')]",
+            "//button[contains(text(),'Sign in')]",
+            "//button[contains(text(),'Log in')]"
+        ]
+        
+        sign_in_btn = None
+        for selector in sign_in_selectors:
+            try:
+                sign_in_btn = WebDriverWait(driver, 2).until(
+                    EC.element_to_be_clickable((By.XPATH, selector))
+                )
+                log_step("Login", f"Bejelentkezes gomb talalva")
+                break
+            except:
+                continue
+        
+        if sign_in_btn:
+            log_step("Login", "Bejelentkezes szukseges...")
+            sign_in_btn.click()
+            time.sleep(2)
+            
+            # 2. LÉPÉS: Felhasználónév mező
+            username_field = WebDriverWait(driver, 5).until(
+                EC.presence_of_element_located((By.ID, "username"))
+            )
+            username_field.clear()
+            username_field.send_keys(username)
+            log_step("Login", "Felhasznalonev megadva")
+            time.sleep(1)
+            
+            # 3. LÉPÉS: "Continue" gomb a felhasználónév után
+            continue_btn = WebDriverWait(driver, 3).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "._button-login-id"))
+            )
+            continue_btn.click()
+            log_step("Login", "Continue gomb megnyomva")
+            time.sleep(2)
+            
+            # 4. LÉPÉS: Jelszó mező
+            password_field = WebDriverWait(driver, 5).until(
+                EC.presence_of_element_located((By.ID, "password"))
+            )
+            password_field.clear()
+            password_field.send_keys(password)
+            log_step("Login", "Jelszo megadva")
+            time.sleep(1)
+            
+            # 5. LÉPÉS: "Continue" gomb a jelszó után
+            login_btn = WebDriverWait(driver, 3).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "._button-login-password"))
+            )
+            login_btn.click()
+            
+            log_success("Bejelentkezes sikeres")
+            time.sleep(3)
+            
+            return True
+        else:
+            log_step("Login", "Mar be van jelentkezve")
+            return False
+    except Exception as e:
+        log_error("Bejelentkezesi hiba", str(e))
+        return False
+
 def is_row_processed(ws, row_idx):
     for col in range(1, 6):
         cell = ws.cell(row=row_idx, column=col)
@@ -383,20 +538,23 @@ def is_row_processed(ws, row_idx):
     return False
 
 def main():
-    if len(sys.argv) < 4:
+    if len(sys.argv) < 6:
         log_error("Hianyzo argumentumok"); return 1
     ups_url = sys.argv[1]
     excel_path = sys.argv[2]
     download_folder = sys.argv[3]
+    UPS_USERNAME = sys.argv[4]
+    UPS_PASSWORD = sys.argv[5]
 
     log_message("="*60)
-    log_message("PYTHON SCRIPT FUT (DEBUG MODE)")
+    log_message("PYTHON SCRIPT FUT")
     log_message("="*60)
     log_message(f"Excel: {excel_path}")
     log_message(f"Mappa: {download_folder}")
-    log_message(f"URL: {ups_url}\n")
+    log_message(f"URL: {ups_url}")
+    log_message(f"Felhasznalo: {UPS_USERNAME}")
+    log_message("")
 
-    # 1. Excel olvasás
     log_message("[1/5] Excel fajl beolvasasa...")
     try:
         df = pd.read_excel(excel_path, sheet_name=0)
@@ -415,7 +573,6 @@ def main():
     except Exception as e:
         log_error("Excel megnyitasi hiba (openpyxl)", str(e)); return 1
 
-    # Feldolgozandó sorok gyűjtése
     to_process_indices = []
     for idx, row in df.iterrows():
         excel_row = idx + 2
@@ -440,45 +597,38 @@ def main():
     update_progress(0, total)
     log_message("")
 
-    # 2. Csatlakozás a futó Chrome-hoz
-    log_message("[2/5] Csatlakozas a futo Chrome-hoz...")
-    log_message("  (Ellenorizd, hogy fut-e a 'POD Chrome' debug modban!)")
-    
-    # 🔥 Kis várakozás a Chrome debug port inicializálására
-    time.sleep(2)
-    
+    log_message("[2/5] Böngésző indítása...")
     chrome_options = Options()
-    chrome_options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
-    
+    prefs = {
+        "download.default_directory": download_folder,
+        "download.prompt_for_download": False,
+        "download.directory_upgrade": True,
+        "plugins.always_open_pdf_externally": True,
+        "profile.default_content_setting_values.automatic_downloads": 1
+    }
+    chrome_options.add_experimental_option("prefs", prefs)
+    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    chrome_options.add_experimental_option('useAutomationExtension', False)
+
     try:
-        driver = webdriver.Chrome(options=chrome_options)
-        log_success("Sikeres csatlakozas a futo Chrome-hoz!")
-        
-        # Új lap nyitása
-        log_step("Uj lap", "Uj fule nyitasa...")
-        driver.execute_script("window.open('');")
-        time.sleep(1)
-        
-        # Váltás az új lapra
-        driver.switch_to.window(driver.window_handles[-1])
-        log_success("Uj lap letrehozva")
-        
-        # UPS oldal betöltése
-        log_step("Oldal", f"UPS oldal betoltese: {ups_url}")
+        service = Service(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=chrome_options)
+        log_success("Bongeszo sikeresen elindult")
+    except Exception as e:
+        log_error("Bongeszo inditasi hiba", str(e)); return 1
+
+    try:
         driver.get(ups_url)
         time.sleep(3)
         log_success("Oldal betoltve")
         
-    except Exception as e:
-        log_error("Csatlakozasi hiba", "Nem sikerult csatlakozni a futo Chrome-hoz!")
-        log_error("Részletek", str(e))
-        log_error("Tanacs", "1. Inditsd el a 'POD Chrome' ikont")
-        log_error("Tanacs", "2. Gyozodj meg rola, hogy az ablak nyitva van")
-        log_error("Tanacs", "3. Ne zarj be mas Chrome ablakokat, ami a 9222-es portot hasznalja")
-        return 1
+        accept_cookies(driver)
+        login_if_needed(driver, UPS_USERNAME, UPS_PASSWORD)
+        accept_cookies(driver)
+        
+        log_message("")
 
-    # 3. Tracking számok feldolgozása
-    try:
         processed = 0
         success_count = 0
         zold_fill = PatternFill(start_color=GREEN_COLOR, end_color=GREEN_COLOR, fill_type='solid')
@@ -492,7 +642,6 @@ def main():
             log_message(f"Feldolgozas: {tracking} -> {new_name} (Excel sor: {excel_row})")
             log_message("-"*50)
 
-            # 3a. Tracking szám mező keresése
             log_step("3a", "Tracking szám mező keresése...")
             track_selectors = [
                 (By.ID, "stApp_trackingNumber", "ID: stApp_trackingNumber"),
@@ -512,7 +661,6 @@ def main():
             log_success(f"Tracking szám beirva: '{tracking}' (hossz: {len(tracking)})")
             time.sleep(1)
 
-            # 3b. Track gomb keresése
             log_step("3b", "Track gomb keresése...")
             try:
                 track_btn = WebDriverWait(driver, 10).until(
@@ -535,13 +683,11 @@ def main():
                 log_error("Hiba a track gomb kezelésekor", str(e))
                 continue
 
-            # 3c. Policy popup kezelése (új!)
+            # 🔥 ÚJ: Policy popup kezelése
             close_policy_popup(driver)
             
-            # 3d. Chat kezelése
             close_chat_if_present(driver)
 
-            # 3e. Proof of Delivery link keresése
             log_step("3c", "Proof of Delivery link keresese...")
             pod_selectors = [
                 (By.ID, "stApp_btnProofOfDeliveryonDetails", "ID: stApp_btnProofOfDeliveryonDetails"),
@@ -560,7 +706,6 @@ def main():
             pod_link.click()
             log_success(f"POD link megnyitva ({used})")
 
-            # 3f. Új ablakra váltás
             log_step("3d", "Ablakvaltas...")
             try:
                 WebDriverWait(driver, 5).until(lambda d: len(d.window_handles) > 1)
@@ -572,7 +717,6 @@ def main():
             except:
                 log_step("Ablak", "Nincs uj ablak, maradunk")
 
-            # 3g. Print this page keresése
             log_step("3e", "Print this page kereses...")
             print_selectors = [
                 (By.ID, "stApp_POD_btnPrint", "ID: stApp_POD_btnPrint"),
@@ -588,13 +732,10 @@ def main():
                 log_success(f"Print link megnyitva ({used})")
                 time.sleep(2)
 
-            # 3h. Print ablak (Chrome) kezelése
             handle_chrome_print(driver)
 
-            # Vissza a főablakra
             driver.switch_to.window(main_window)
 
-            # 3i. Letöltött fájl keresése és átnevezése
             log_step("3f", "Letoltott fajl kereses...")
             time.sleep(3)
             files = os.listdir(download_folder)
@@ -607,7 +748,6 @@ def main():
                 shutil.move(latest, new_path)
                 log_success(f"Fajl mentve: {new_name}.pdf")
                 
-                # Sor zöldre színezése
                 for col in range(1, 6):
                     ws.cell(row=excel_row, column=col).fill = zold_fill
                 log_success(f"Sor {excel_row} zoldre szinezve (A-E oszlopok, #{GREEN_COLOR})")
@@ -620,7 +760,6 @@ def main():
             update_progress(processed, total)
             log_success(f"Feldolgozva: {processed}/{total}")
 
-        # 4. Excel mentése
         log_message("\n[4/5] Excel fajl mentese...")
         output_path = excel_path.replace('.xlsx', '_FELDOLGOZOTT.xlsx')
         if output_path == excel_path:
@@ -640,7 +779,9 @@ def main():
         log_error("Varatlan hiba", str(e)); return 1
     finally:
         if driver:
-            log_message("Megjegyzes: A bongeszot nem zarjuk be, mert a felhasznalo nyitotta.")
+            driver.quit()
+            log_message("Bongeszo bezarva")
+        if os.path.exists(STOP_FILE): os.remove(STOP_FILE)
 
 if __name__ == "__main__":
     sys.exit(main())
@@ -651,11 +792,9 @@ if __name__ == "__main__":
     [System.IO.File]::WriteAllText($tempPython, $pythonScript, $utf8WithBom)
     
     Write-Log "Python script futtatasa..."
-    Write-Log "  (Csatlakozas a futo Chrome-hoz a 9222-es porton...)"
-    
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = "python"
-    $psi.Arguments = "`"$tempPython`" `"$url`" `"$excelPath`" `"$downloadFolder`""
+    $psi.Arguments = "`"$tempPython`" `"$url`" `"$excelPath`" `"$downloadFolder`" `"$username`" `"$password`""
     $psi.UseShellExecute = $false
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
@@ -717,25 +856,5 @@ if __name__ == "__main__":
     $startButton.Enabled = $true
     $stopButton.Enabled = $false
 })
-
-# Kilépés gomb
-$exitButton = New-Object System.Windows.Forms.Button
-$exitButton.Location = New-Object System.Drawing.Point(520, 580)
-$exitButton.Size = New-Object System.Drawing.Size(90, 25)
-$exitButton.Text = "Kilépés"
-$exitButton.BackColor = "DarkRed"
-$exitButton.ForeColor = "White"
-$exitButton.Font = New-Object System.Drawing.Font("Arial", 9, [System.Drawing.FontStyle]::Bold)
-$exitButton.Add_Click({
-    if ($script:pythonProcess -and !$script:pythonProcess.HasExited) {
-        $stopFilePath = Join-Path $env:TEMP "ups_pod_stop.txt"
-        Set-Content -Path $stopFilePath -Value "stop" -Force
-        Write-Log "Leallitasi jelzes kuldve..."
-        Start-Sleep -Seconds 2
-        if (!$script:pythonProcess.HasExited) { $script:pythonProcess.Kill() }
-    }
-    $form.Close()
-})
-$form.Controls.Add($exitButton)
 
 $form.ShowDialog()
