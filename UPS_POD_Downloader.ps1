@@ -239,7 +239,7 @@ $startButton.Add_Click({
     Write-Log "UPS URL: $url"
     Write-Log ""
     
-    # Python script – teljes cookie kezeléssel és pontos bejelentkezéssel
+    # Python script – Chrome profil használattal
     $pythonScript = @'
 import sys
 import pandas as pd
@@ -459,7 +459,7 @@ def login_if_needed(driver):
             time.sleep(3)
             
             # VISSZA A MEGADOTT URL-RE (a tracking oldalra)
-            driver.get(driver.current_url)  # Ez ugyanaz az URL marad, ahol vagyunk
+            driver.get(driver.current_url)
             time.sleep(2)
             
             return True
@@ -549,6 +549,15 @@ def main():
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option('useAutomationExtension', False)
 
+    # FONTOS: Meglévő Chrome profil használata
+    user_data_dir = os.path.join(os.environ['USERPROFILE'], 'AppData', 'Local', 'Google', 'Chrome', 'User Data')
+    if os.path.exists(user_data_dir):
+        chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
+        chrome_options.add_argument("--profile-directory=Default")
+        log_step("Profil", "Meglévő Chrome profil betöltve - a bejelentkezési adatok és cookie-k megmaradnak!")
+    else:
+        log_step("Profil", "Nem található meglévő profil, üres profillal indulok")
+
     try:
         service = Service(ChromeDriverManager().install())
         driver = webdriver.Chrome(service=service, options=chrome_options)
@@ -561,10 +570,10 @@ def main():
         time.sleep(3)
         log_success("Oldal betoltve")
         
-        # COOKIE-K ELFOGADÁSA
+        # COOKIE-K ELFOGADÁSA (ha mégis szükség lenne rá)
         accept_cookies(driver)
         
-        # BEJELENTKEZÉS HA KELL
+        # BEJELENTKEZÉS HA KELL (ha a profilban nincs bent)
         login_if_needed(driver)
         
         # MÉG EGYSZER COOKIE (ha a bejelentkezés után újra feljönne)
@@ -601,24 +610,33 @@ def main():
             if not track_input:
                 log_error("Tracking mező nem talalhato"); continue
             track_input.clear(); track_input.send_keys(tracking)
-            log_success(f"Tracking szám beirva ({used})")
+            log_success(f"Tracking szám beirva: '{tracking}' (hossz: {len(tracking)})")
             time.sleep(1)
 
             log_step("3b", "Track gomb keresése...")
-            btn_selectors = [
-                (By.ID, "stApp_btnTrack", "ID: stApp_btnTrack"),
-                (By.XPATH, "//button[contains(text(),'Track')]", "Szöveg: Track"),
-                (By.CSS_SELECTOR, "button[type='submit']", "Type submit")
-            ]
-            track_btn = None
-            for by, sel, desc in btn_selectors:
-                el = check_element(driver, by, sel, 3, desc)
-                if el and el.is_enabled():
-                    track_btn = el; used = desc; break
-            if not track_btn:
-                log_error("Track gomb nem talalhato"); continue
-            track_btn.click()
-            log_success(f"Track gomb megnyomva ({used})")
+            try:
+                track_btn = WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable((By.ID, "stApp_btnTrack"))
+                )
+                log_success("Track gomb megtalálva és kattintható")
+                
+                # Kattintás
+                track_btn.click()
+                log_success("Track gomb megnyomva")
+                
+                # Várjuk meg, amíg az oldal URL-je megváltozik (jelezve, hogy a keresés megtörtént)
+                log_step("3b", "Varakozas az oldal valtozasara...")
+                WebDriverWait(driver, 15).until(
+                    EC.url_changes(driver.current_url)
+                )
+                log_success("URL megvaltozott, keresesi eredmenyek betoltve")
+                
+                # Adjunk még egy kis időt a DOM teljes betöltésére
+                time.sleep(2)
+                
+            except Exception as e:
+                log_error("Hiba a track gomb kezelésekor", str(e))
+                continue
 
             close_chat_if_present(driver)
 
@@ -630,7 +648,7 @@ def main():
             ]
             pod_link = None
             for by, sel, desc in pod_selectors:
-                el = check_element(driver, by, sel, 10, desc)
+                el = check_element(driver, by, sel, 20, desc)  # 20 másodperc timeout
                 if el:
                     pod_link = el; used = desc; break
             if not pod_link:
