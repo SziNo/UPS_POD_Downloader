@@ -193,7 +193,7 @@ $progressBar.Size = New-Object System.Drawing.Size(280, 25)
 $form.Controls.Add($progressBar)
 
 # ============================================
-# STOP GOMB
+# STOP GOMB (MEGERŐSÍTVE)
 # ============================================
 $script:stopRequested = $false
 $script:pythonProcess = $null
@@ -208,11 +208,26 @@ $stopButton.Font = New-Object System.Drawing.Font("Arial", 9, [System.Drawing.Fo
 $stopButton.Enabled = $false
 $stopButton.Add_Click({
     $script:stopRequested = $true
-    Write-Log "LEALLAS: Leállítás kérve... (a következő tracking után leáll)"
+    Write-Log "LEALLAS: Leállítás kérve... (Python folyamat leallitasa)"
+    
     if ($script:pythonProcess -and !$script:pythonProcess.HasExited) {
         $stopFilePath = Join-Path $env:TEMP "ups_pod_stop.txt"
         Set-Content -Path $stopFilePath -Value "stop" -Force
         Write-Log "   Jelzőfájl létrehozva: $stopFilePath"
+        
+        # Várj 3 másodpercet, hogy a Python reagáljon
+        Start-Sleep -Seconds 3
+        
+        # Ha még mindig fut, kényszerített leállítás
+        if (!$script:pythonProcess.HasExited) {
+            Write-Log "   Python folyamat nem reagal, kényszerített leállítás..."
+            $script:pythonProcess.Kill()
+            Write-Log "   Python folyamat leallitva (KILL)"
+        } else {
+            Write-Log "   Python folyamat rendben leallt"
+        }
+    } else {
+        Write-Log "   Nincs futó Python folyamat"
     }
 })
 $form.Controls.Add($stopButton)
@@ -227,7 +242,7 @@ $startButton.ForeColor = "White"
 $startButton.Font = New-Object System.Drawing.Font("Arial", 9, [System.Drawing.FontStyle]::Bold)
 $form.Controls.Add($startButton)
 
-# Kilépés gomb
+# Kilépés gomb (megerősítve)
 $exitButton = New-Object System.Windows.Forms.Button
 $exitButton.Location = New-Object System.Drawing.Point(520, 600)
 $exitButton.Size = New-Object System.Drawing.Size(90, 25)
@@ -235,7 +250,19 @@ $exitButton.Text = "Kilépés"
 $exitButton.BackColor = "DarkRed"
 $exitButton.ForeColor = "White"
 $exitButton.Font = New-Object System.Drawing.Font("Arial", 9, [System.Drawing.FontStyle]::Bold)
-$exitButton.Add_Click({ $form.Close() })
+$exitButton.Add_Click({
+    if ($script:pythonProcess -and !$script:pythonProcess.HasExited) {
+        $stopFilePath = Join-Path $env:TEMP "ups_pod_stop.txt"
+        Set-Content -Path $stopFilePath -Value "stop" -Force
+        Write-Log "Leallitasi jelzes kuldve..."
+        Start-Sleep -Seconds 2
+        if (!$script:pythonProcess.HasExited) {
+            $script:pythonProcess.Kill()
+            Write-Log "Python folyamat kényszerített leállítása"
+        }
+    }
+    $form.Close()
+})
 $form.Controls.Add($exitButton)
 
 function Write-Log {
@@ -292,7 +319,7 @@ $startButton.Add_Click({
     Write-Log "Felhasznalo: $username"
     Write-Log ""
     
-    # Python script – TELJES ANTI-DETECTION + HUMAN-LIKE BEJELENTKEZÉS + HUMAN-LIKE TRACKING
+    # Python script – TELJES ANTI-DETECTION + HUMAN-LIKE + CDP PDF
     $pythonScript = @'
 import sys
 import pandas as pd
@@ -300,6 +327,7 @@ import time
 import os
 import shutil
 import random
+import base64
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -433,34 +461,6 @@ def close_chat_if_present(driver):
     except Exception as e:
         log_step("Chat", f"Nem sikerult bezarni a chatet: {str(e)}")
 
-def handle_chrome_print(driver):
-    try:
-        main = driver.current_window_handle
-        for handle in driver.window_handles:
-            if handle != main:
-                driver.switch_to.window(handle)
-                break
-        log_step("Print", "Print ablakba valtottunk")
-        time.sleep(2)
-
-        script = """
-        const printBtn = document.querySelector('cr-button.action-button');
-        if (printBtn) {
-            printBtn.click();
-            return true;
-        }
-        return false;
-        """
-        clicked = driver.execute_script(script)
-        if clicked:
-            log_success("Print gomb megnyomva (shadow DOM)")
-        else:
-            log_error("Print gomb nem talalhato shadow DOM-ban")
-        time.sleep(2)
-        driver.switch_to.window(main)
-    except Exception as e:
-        log_error("Hiba a print ablak kezelesekor", str(e))
-
 def accept_cookies(driver):
     """Cookie-k automatikus elfogadása - kis banner + nagy OneTrust"""
     try:
@@ -591,6 +591,53 @@ def is_row_processed(ws, row_idx):
                 return True
     return False
 
+def handle_chrome_print(driver, download_folder, new_name):
+    """CDP alapú közvetlen PDF mentés - megkerüli a nyomtatási dialógust"""
+    try:
+        main = driver.current_window_handle
+        
+        # Ha új ablak nyílt, arra váltunk
+        if len(driver.window_handles) > 1:
+            for handle in driver.window_handles:
+                if handle != main:
+                    driver.switch_to.window(handle)
+                    break
+            log_step("Print", "Uj ablakra valtva")
+            time.sleep(2)
+        
+        # CDP parancs: oldal nyomtatása PDF-be
+        log_step("Print", "CDP alapu PDF mentes...")
+        pdf_data = driver.execute_cdp_cmd("Page.printToPDF", {
+            "printBackground": True,
+            "paperWidth": 8.27,   # A4 szélesség inch-ben
+            "paperHeight": 11.69, # A4 magasság inch-ben
+            "marginTop": 0.4,
+            "marginBottom": 0.4,
+            "marginLeft": 0.4,
+            "marginRight": 0.4,
+        })
+        
+        # PDF mentése
+        pdf_bytes = base64.b64decode(pdf_data['data'])
+        output_path = os.path.join(download_folder, f"{new_name}.pdf")
+        
+        if os.path.exists(output_path):
+            os.remove(output_path)
+        
+        with open(output_path, 'wb') as f:
+            f.write(pdf_bytes)
+        
+        log_success(f"PDF mentve CDP-vel: {new_name}.pdf ({len(pdf_bytes)} bytes)")
+        
+        # Visszaváltás főablakra
+        driver.switch_to.window(main)
+        return True
+        
+    except Exception as e:
+        log_error("CDP PDF mentes hiba", str(e))
+        driver.switch_to.window(main)
+        return False
+
 def main():
     if len(sys.argv) < 6:
         log_error("Hianyzo argumentumok"); return 1
@@ -601,7 +648,7 @@ def main():
     UPS_PASSWORD = sys.argv[5]
 
     log_message("="*60)
-    log_message("PYTHON SCRIPT FUT (ANTI-DETECTION + HUMAN-LIKE)")
+    log_message("PYTHON SCRIPT FUT (ANTI-DETECTION + HUMAN-LIKE + CDP)")
     log_message("="*60)
     log_message(f"Excel: {excel_path}")
     log_message(f"Mappa: {download_folder}")
@@ -892,56 +939,29 @@ def main():
             human_click(driver, pod_link)
             log_success(f"POD link megnyitva ({used})")
 
-            log_step("3d", "Ablakvaltas...")
+            # Várj az új ablakra
             try:
                 WebDriverWait(driver, 5).until(lambda d: len(d.window_handles) > 1)
-                for w in driver.window_handles:
-                    if w != main_window:
-                        driver.switch_to.window(w); break
-                log_success("Uj ablakra valtva")
-                time.sleep(2)
+                log_success("POD ablak megnyilt")
             except:
                 log_step("Ablak", "Nincs uj ablak, maradunk")
 
-            log_step("3e", "Print this page kereses...")
-            print_selectors = [
-                (By.ID, "stApp_POD_btnPrint", "ID: stApp_POD_btnPrint"),
-                (By.LINK_TEXT, "Print this page", "Link szöveg")
-            ]
-            print_link = None
-            for by, sel, desc in print_selectors:
-                el = check_element(driver, by, sel, 5, desc)
-                if el:
-                    print_link = el; used = desc; break
-            if print_link:
-                human_click(driver, print_link)
-                log_success(f"Print link megnyitva ({used})")
-                time.sleep(2)
-
-            handle_chrome_print(driver)
-
-            driver.switch_to.window(main_window)
-
-            log_step("3f", "Letoltott fajl kereses...")
+            # Várj hogy a POD oldal betöltsön
             time.sleep(3)
-            files = os.listdir(download_folder)
-            pdfs = [f for f in files if f.lower().endswith('.pdf')]
-            if pdfs:
-                full_paths = [os.path.join(download_folder, f) for f in pdfs]
-                latest = max(full_paths, key=os.path.getctime)
-                new_path = os.path.join(download_folder, f"{new_name}.pdf")
-                if os.path.exists(new_path): os.remove(new_path)
-                shutil.move(latest, new_path)
-                log_success(f"Fajl mentve: {new_name}.pdf")
-                
+
+            # Közvetlen CDP PDF mentés - NEM kell a Print gombra kattintani!
+            pdf_saved = handle_chrome_print(driver, download_folder, new_name)
+
+            if pdf_saved:
+                # Excel sor zöldre színezése
                 for col in range(1, 6):
                     ws.cell(row=excel_row, column=col).fill = zold_fill
-                log_success(f"Sor {excel_row} zoldre szinezve (A-E oszlopok, #{GREEN_COLOR})")
-                
+                log_success(f"Sor {excel_row} zoldre szinezve")
                 success_count += 1
             else:
-                log_error("Nem talalhato letoltott PDF")
+                log_error("PDF mentés sikertelen")
 
+            driver.switch_to.window(main_window)
             processed += 1
             update_progress(processed, total)
             log_success(f"Feldolgozva: {processed}/{total}")
@@ -977,7 +997,7 @@ if __name__ == "__main__":
     $utf8WithBom = New-Object System.Text.UTF8Encoding $true
     [System.IO.File]::WriteAllText($tempPython, $pythonScript, $utf8WithBom)
     
-    Write-Log "Python script futtatasa (anti-detection + human-like)..."
+    Write-Log "Python script futtatasa (anti-detection + human-like + CDP)..."
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = "python"
     $psi.Arguments = "`"$tempPython`" `"$url`" `"$excelPath`" `"$downloadFolder`" `"$username`" `"$password`""
