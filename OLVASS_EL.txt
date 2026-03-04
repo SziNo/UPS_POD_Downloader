@@ -26,11 +26,11 @@ Ha mindkettő verziószámot ír ki, akkor minden rendben, és a program futtath
 3) Szükséges Python csomagok telepítése
 A Python telepítése után nyiss egy PowerShell ablakot, és futtasd:
 
-pip install pandas selenium openpyxl
+pip install pandas selenium openpyxl webdriver-manager
 
 Ha régebbi a Pythonod (3.10 vagy alatta), akkor:
 
-pip install pandas==2.3.3 openpyxl==3.1.5 selenium==4.41.0
+pip install pandas==2.3.3 openpyxl==3.1.5 selenium==4.41.0 webdriver-manager==4.0.2
 
 ----------------------------------------------------------------
 GYORS ELLENŐRZŐ LISTA HASZNÁLAT ELŐTT:

@@ -40,7 +40,7 @@ $infoLabel.Font = New-Object System.Drawing.Font("Arial", 9)
 $infoPanel.Controls.Add($infoLabel)
 $form.Controls.Add($infoPanel)
 
-# UPS URL - FRISSÍTVE a te linkeddel
+# UPS URL
 $urlLabel = New-Object System.Windows.Forms.Label
 $urlLabel.Location = New-Object System.Drawing.Point(10, 160)
 $urlLabel.Size = New-Object System.Drawing.Size(120, 25)
@@ -239,7 +239,7 @@ $startButton.Add_Click({
     Write-Log "UPS URL: $url"
     Write-Log ""
     
-    # Python script – profil NÉLKÜL, frissített URL-lel
+    # Python script – bejelentkezés utáni várakozással
     $pythonScript = @'
 import sys
 import pandas as pd
@@ -456,11 +456,14 @@ def login_if_needed(driver):
             login_btn.click()
             
             log_success("Bejelentkezes sikeres")
-            time.sleep(3)
             
-            # VISSZA A MEGADOTT URL-RE (a tracking oldalra)
-            driver.get(driver.current_url)
-            time.sleep(2)
+            # 🔥 FONTOS: Várakozás a tracking mező betöltődésére
+            log_step("Varakozas", "Varakozas a tracking mezo betoltodese utan...")
+            WebDriverWait(driver, 15).until(
+                EC.presence_of_element_located((By.ID, "stApp_trackingNumber"))
+            )
+            time.sleep(2)  # Még egy kis idő a localStorage-nek
+            log_success("Tracking mezo elerheto, folytatas...")
             
             return True
         else:
@@ -549,8 +552,6 @@ def main():
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option('useAutomationExtension', False)
 
-    # 🔥 PROFIL HASZNÁLATA ELTÁVOLÍTVA - tiszta profillal indul
-
     try:
         service = Service(ChromeDriverManager().install())
         driver = webdriver.Chrome(service=service, options=chrome_options)
@@ -613,18 +614,15 @@ def main():
                 )
                 log_success("Track gomb megtalálva és kattintható")
                 
-                # Kattintás
                 track_btn.click()
                 log_success("Track gomb megnyomva")
                 
-                # Várjuk meg, amíg az oldal URL-je megváltozik (jelezve, hogy a keresés megtörtént)
                 log_step("3b", "Varakozas az oldal valtozasara...")
                 WebDriverWait(driver, 15).until(
                     EC.url_changes(driver.current_url)
                 )
                 log_success("URL megvaltozott, keresesi eredmenyek betoltve")
                 
-                # Adjunk még egy kis időt a DOM teljes betöltésére
                 time.sleep(2)
                 
             except Exception as e:
@@ -641,7 +639,7 @@ def main():
             ]
             pod_link = None
             for by, sel, desc in pod_selectors:
-                el = check_element(driver, by, sel, 20, desc)  # 20 másodperc timeout
+                el = check_element(driver, by, sel, 20, desc)
                 if el:
                     pod_link = el; used = desc; break
             if not pod_link:
