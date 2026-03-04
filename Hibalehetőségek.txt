@@ -1,68 +1,23 @@
-1. Az UPS oldal változékonysága, illetve pontos selectorok beállítása
+- Csak VPN nélkül megy a pip installok és az app maga is.
 
-ÖSSZESEN 5 helyen kell ellenőrizni a selectorokat:
+Keresd meg a Chrome-ot: Nyomd meg a Windows billentyűt és írd be, hogy chrome.
 
-- Tracking szám mező (beírás)
-- Track gomb (kattintás)
-- Proof of Delivery link (kattintás)
-- Print this page link (kattintás)
-- Save gomb (kattintás)
+Fájlhely megnyitása: Amikor megjelenik a Google Chrome a keresési találatok között, jobb klikk rá, és válaszd a "Fájlhely megnyitása" menüpontot. Ezzel megnyílik a mappa, ahol a chrome.exe található.
 
-A. TRACKING SZÁM MEZŐ - ahol beírjuk a számot
+Másold ki a címsorból: A megnyílt mappában nézz fel a címsorba. Ott látod a teljes elérési utat, például: C:\Program Files\Google\Chrome\Application.
 
-# Tracking szám mező keresése
-selectors = [
-    (By.ID, "st_app_trackingnumber"),        # EZT KELL ELLENŐRIZNI
-    (By.NAME, "trackingnumber"),              # EZT IS
-    (By.CSS_SELECTOR, "input[placeholder*='Tracking']"),  # EZT IS
-    (By.CSS_SELECTOR, "input[aria-label*='track']")       # EZT IS
-]
+Kattints a címsorba, a teljes útvonal kijelölődik. Nyomj Ctrl + C-t a másoláshoz.
 
-B. TRACK GOMB - amire kattintunk a kereséshez
+Most, hogy megvan a mappa elérési útja, már csak egy dolgod van hátra: az asztalon létrehozott parancsikon "Cél" mezőjébe illeszd be ezt az utat, és told hozzá a fájl nevét (chrome.exe) és a paramétert.
 
-# Track gomb keresése
-track_btn_selectors = [
-    (By.ID, "st_app_track_package_btn"),      # EZT KELL ELLENŐRIZNI
-    (By.XPATH, "//button[contains(text(),'Track')]"),    # EZT IS
-    (By.XPATH, "//button[contains(text(),'Követés')]"),  # EZT IS
-    (By.CSS_SELECTOR, "button[type='submit']")           # EZT IS
-]
+Hozd létre a parancsikont az asztalon (jobb klikk → Új → Parancsikon).
 
-C. PROOF OF DELIVERY LINK - a POD oldal megnyitásához
+Amikor a "Hely" mezőbe kell beírnod a Chrome-od elérési útját, illeszd be (Ctrl+V) az előbb kimásolt mappa elérési útját, majd írd hozzá: \chrome.exe
+Például: C:\Program Files\Google\Chrome\Application\chrome.exe
 
-# Proof of Delivery link keresése
-pod_selectors = [
-    (By.LINK_TEXT, "Proof of Delivery"),      # EZT KELL ELLENŐRIZNI
-    (By.PARTIAL_LINK_TEXT, "Proof"),           # EZT IS
-    (By.XPATH, "//a[contains(text(),'Proof')]"),         # EZT IS
-    (By.CSS_SELECTOR, "a[href*='proof']")                # EZT IS
-]
+Tedd idézőjelbe az egészet, ha még nincs benne: "C:\Program Files\Google\Chrome\Application\chrome.exe"
 
-D. PRINT THIS PAGE LINK - a print nézet megnyitásához
+A végére, az utolsó idézőjel után nyomj egy space-t, és írd be a paramétert: --remote-debugging-port=9222
 
-# Print this page link keresése
-print_selectors = [
-    (By.LINK_TEXT, "Print this page"),         # EZT KELL ELLENŐRIZNI
-    (By.PARTIAL_LINK_TEXT, "Print"),           # EZT IS
-    (By.XPATH, "//a[contains(text(),'Print')]"),          # EZT IS
-    (By.ID, "printLink")                        # EZT IS
-]
-
-E. SAVE GOMB - a PDF mentéséhez
-
-# Save gomb keresése a print ablakban
-save_selectors = [
-    (By.ID, "save"),                           # EZT KELL ELLENŐRIZNI
-    (By.XPATH, "//button[contains(text(),'Save')]"),      # EZT IS
-    (By.XPATH, "//input[@value='Save']"),                  # EZT IS
-    (By.CSS_SELECTOR, "button[onclick*='save']")           # EZT IS
-]
-
-2. Chrome profil elérési út
-
-user_data_dir = os.path.join(os.environ['USERPROFILE'], 'AppData', 'Local', 'Google', 'Chrome', 'User Data')
-
-Ez Windows-on működik, de ha a felhasználó másik böngészőt használ, vagy más a profil neve, akkor probléma lehet.
-
-3. "Print this page" és "Save" gombok
-Az UPS print nézete változhat. A kód próbálkozik több selectorral, de lehet, hogy más a felépítés.
+A teljes "Cél:" mező végül így fog kinézni:
+"C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222

@@ -1,6 +1,7 @@
 ﻿# UPS_POD_Downloader.ps1
 # UPS Proof of Delivery automatizált letöltő
 # Futtatás: Jobb klikk -> Run with PowerShell
+# FIGYELEM: Használat előtt indítsd el a "POD Chrome" ikont!
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -32,10 +33,10 @@ $infoLabel = New-Object System.Windows.Forms.Label
 $infoLabel.Location = New-Object System.Drawing.Point(10, 5)
 $infoLabel.Size = New-Object System.Drawing.Size(580, 90)
 $infoLabel.Text = "Használat:`n" +
-                  "1. Jelentkezz be az UPS fiókodba a böngészőben`n" +
-                  "2. Másold ki azt az URL-t, ahol a tracking number mező van`n" +
-                  "3. Tallózással válaszd ki az Excel fájlt`n" +
-                  "4. Tallózással válaszd ki a letöltési mappát"
+                  "1. Kattints a 'POD Chrome' ikonra (debug módú Chrome)`n" +
+                  "2. Ebben a Chrome-ban jelentkezz be az UPS fiókodba`n" +
+                  "3. Hagyd nyitva ezt a Chrome ablakot!`n" +
+                  "4. Indítsd el ezt a scriptet"
 $infoLabel.Font = New-Object System.Drawing.Font("Arial", 9)
 $infoPanel.Controls.Add($infoLabel)
 $form.Controls.Add($infoPanel)
@@ -239,7 +240,7 @@ $startButton.Add_Click({
     Write-Log "UPS URL: $url"
     Write-Log ""
     
-    # Python script – bejelentkezés utáni várakozással
+    # Python script – CSATLAKOZÁS FUTÓ CHROME-HOZ
     $pythonScript = @'
 import sys
 import pandas as pd
@@ -251,8 +252,6 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, WebDriverException
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill
@@ -338,141 +337,6 @@ def handle_chrome_print(driver):
     except Exception as e:
         log_error("Hiba a print ablak kezelesekor", str(e))
 
-def accept_cookies(driver):
-    """Cookie-k automatikus elfogadása - kis banner + nagy OneTrust"""
-    try:
-        # 1. KIS BANNER
-        banner_selectors = [
-            (By.ID, "onetrust-accept-btn-handler", "Allow All Cookies (banner)"),
-            (By.ID, "onetrust-reject-all-handler", "Essential Only (banner)"),
-            (By.ID, "onetrust-pc-btn-handler", "Cookie Settings (banner)")
-        ]
-        
-        for by, selector, description in banner_selectors:
-            try:
-                btn = WebDriverWait(driver, 2).until(
-                    EC.element_to_be_clickable((by, selector))
-                )
-                btn.click()
-                log_success(f"Cookie banner kezelve: {description}")
-                time.sleep(1)
-                return True
-            except:
-                continue
-        
-        # 2. NAGY ONETRUST ABLAK
-        big_selectors = [
-            (By.ID, "accept-recommended-btn-handler", "Allow All (big)"),
-            (By.CSS_SELECTOR, ".save-preference-btn-handler", "Confirm Choices (big)"),
-            (By.ID, "close-pc-btn-handler", "Close X (big)")
-        ]
-        
-        for by, selector, description in big_selectors:
-            try:
-                btn = WebDriverWait(driver, 2).until(
-                    EC.element_to_be_clickable((by, selector))
-                )
-                btn.click()
-                log_success(f"Cookie ablak kezelve: {description}")
-                time.sleep(1)
-                return True
-            except:
-                continue
-        
-        log_step("Cookie", "Nincs cookie elfogado ablak")
-        return False
-    except Exception as e:
-        log_step("Cookie", f"Cookie hiba: {str(e)}")
-        return False
-
-def login_if_needed(driver):
-    """
-    Bejelentkezés automatizálása - pontos selectorokkal a te HTML-ed alapján.
-    """
-    try:
-        # 1. LÉPÉS: "Log in" gomb keresése
-        sign_in_selectors = [
-            "//a[contains(text(),'Sign in')]",
-            "//a[contains(text(),'Log in')]",
-            "//a[contains(text(),'Bejelentkezés')]",
-            "//a[contains(@href,'/account/login')]",
-            "//button[contains(text(),'Sign in')]",
-            "//button[contains(text(),'Log in')]"
-        ]
-        
-        sign_in_btn = None
-        for selector in sign_in_selectors:
-            try:
-                sign_in_btn = WebDriverWait(driver, 2).until(
-                    EC.element_to_be_clickable((By.XPATH, selector))
-                )
-                log_step("Login", f"Bejelentkezes gomb talalva")
-                break
-            except:
-                continue
-        
-        if sign_in_btn:
-            log_step("Login", "Bejelentkezes szukseges...")
-            sign_in_btn.click()
-            time.sleep(2)
-            
-            # =====================================================================
-            # !!! IDE ÍRD BE A SAJÁT UPS FELHASZNÁLÓNEVED !!!
-            # =====================================================================
-            UPS_USERNAME = "DHLSC2022"   # <-- Ezt cseréld ki!
-            UPS_PASSWORD = "APIconnect5483167"          # <-- Ezt is cseréld ki!
-            # =====================================================================
-            
-            # 2. LÉPÉS: Felhasználónév mező
-            username_field = WebDriverWait(driver, 5).until(
-                EC.presence_of_element_located((By.ID, "username"))
-            )
-            username_field.clear()
-            username_field.send_keys(UPS_USERNAME)
-            log_step("Login", "Felhasznalonev megadva")
-            time.sleep(1)
-            
-            # 3. LÉPÉS: "Continue" gomb a felhasználónév után
-            continue_btn = WebDriverWait(driver, 3).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, "._button-login-id"))
-            )
-            continue_btn.click()
-            log_step("Login", "Continue gomb megnyomva")
-            time.sleep(2)
-            
-            # 4. LÉPÉS: Jelszó mező
-            password_field = WebDriverWait(driver, 5).until(
-                EC.presence_of_element_located((By.ID, "password"))
-            )
-            password_field.clear()
-            password_field.send_keys(UPS_PASSWORD)
-            log_step("Login", "Jelszo megadva")
-            time.sleep(1)
-            
-            # 5. LÉPÉS: "Continue" gomb a jelszó után
-            login_btn = WebDriverWait(driver, 3).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, "._button-login-password"))
-            )
-            login_btn.click()
-            
-            log_success("Bejelentkezes sikeres")
-            
-            # 🔥 FONTOS: Várakozás a tracking mező betöltődésére
-            log_step("Varakozas", "Varakozas a tracking mezo betoltodese utan...")
-            WebDriverWait(driver, 15).until(
-                EC.presence_of_element_located((By.ID, "stApp_trackingNumber"))
-            )
-            time.sleep(2)  # Még egy kis idő a localStorage-nek
-            log_success("Tracking mezo elerheto, folytatas...")
-            
-            return True
-        else:
-            log_step("Login", "Mar be van jelentkezve")
-            return False
-    except Exception as e:
-        log_error("Bejelentkezesi hiba", str(e))
-        return False
-
 def is_row_processed(ws, row_idx):
     for col in range(1, 6):
         cell = ws.cell(row=row_idx, column=col)
@@ -496,6 +360,7 @@ def main():
     log_message(f"Mappa: {download_folder}")
     log_message(f"URL: {ups_url}\n")
 
+    # 1. Excel olvasás
     log_message("[1/5] Excel fajl beolvasasa...")
     try:
         df = pd.read_excel(excel_path, sheet_name=0)
@@ -538,40 +403,51 @@ def main():
     update_progress(0, total)
     log_message("")
 
-    log_message("[2/5] Böngésző indítása...")
+    # =========================================
+    # 2. LÉPÉS: CSATLAKOZÁS FUTÓ CHROME-HOZ
+    # =========================================
+    log_message("[2/5] Csatlakozas a futo Chrome-hoz...")
+    log_message("  (Ellenorizd, hogy fut-e a 'POD Chrome' debug modban!)")
+    
     chrome_options = Options()
-    prefs = {
-        "download.default_directory": download_folder,
-        "download.prompt_for_download": False,
-        "download.directory_upgrade": True,
-        "plugins.always_open_pdf_externally": True,
-        "profile.default_content_setting_values.automatic_downloads": 1
-    }
-    chrome_options.add_experimental_option("prefs", prefs)
-    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    chrome_options.add_experimental_option('useAutomationExtension', False)
-
+    # 🔥 A KULCS: csatlakozás a futó debug módú Chrome-hoz
+    chrome_options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
+    
     try:
-        service = Service(ChromeDriverManager().install())
-        driver = webdriver.Chrome(service=service, options=chrome_options)
-        log_success("Bongeszo sikeresen elindult")
-    except Exception as e:
-        log_error("Bongeszo inditasi hiba", str(e)); return 1
-
-    try:
+        driver = webdriver.Chrome(options=chrome_options)
+        log_success("Sikeres csatlakozas a futo Chrome-hoz!")
+        
+        # Új lap nyitása
+        log_step("Uj lap", "Uj fule nyitasa...")
+        driver.execute_script("window.open('');")
+        time.sleep(1)
+        
+        # Váltás az új lapra
+        driver.switch_to.window(driver.window_handles[-1])
+        log_success("Uj lap letrehozva")
+        
+        # UPS oldal betöltése
+        log_step("Oldal", f"UPS oldal betoltese: {ups_url}")
         driver.get(ups_url)
         time.sleep(3)
         log_success("Oldal betoltve")
         
-        # COOKIE-K ELFOGADÁSA
-        accept_cookies(driver)
-        
-        # BEJELENTKEZÉS HA KELL
+    except Exception as e:
+        log_error("Csatlakozasi hiba", "Nem sikerult csatlakozni a futo Chrome-hoz!")
+        log_error("Részletek", str(e))
+        log_error("Tanacs", "1. Inditsd el a 'POD Chrome' ikont")
+        log_error("Tanacs", "2. Gyozodj meg rola, hogy az ablak nyitva van")
+        log_error("Tanacs", "3. Ne zarj be mas Chrome ablakokat, ami a 9222-es portot hasznalja")
+        return 1
+
+    try:
+        # BEJELENTKEZÉS HA KELL (de lehet, hogy már be vagy jelentkezve)
+        # A bejelentkezési adatokat itt kell megadni, de mivel a felhasználó már be van jelentkezve a "POD Chrome"-ban, lehet, hogy nem kell
+        """
+        # Ha mégis kell, itt lehet bejelentkeztetni:
+        from login_module import login_if_needed  # Ezt majd külön megírjuk
         login_if_needed(driver)
-        
-        # MÉG EGYSZER COOKIE (ha a bejelentkezés után újra feljönne)
-        accept_cookies(driver)
+        """
         
         log_message("")
 
@@ -722,12 +598,8 @@ def main():
         log_error("Varatlan hiba", str(e)); return 1
     finally:
         if driver:
-            driver.quit()
-            log_message("Bongeszo bezarva")
-        if os.path.exists(STOP_FILE): os.remove(STOP_FILE)
-
-if __name__ == "__main__":
-    sys.exit(main())
+            # Nem zárjuk be a böngészőt, mert a felhasználó nyitotta!
+            log_message("Megjegyzes: A bongeszot nem zarjuk be, mert a felhasznalo nyitotta.")
 '@
     
     $tempPython = [System.IO.Path]::GetTempFileName() + ".py"
@@ -735,6 +607,8 @@ if __name__ == "__main__":
     [System.IO.File]::WriteAllText($tempPython, $pythonScript, $utf8WithBom)
     
     Write-Log "Python script futtatasa..."
+    Write-Log "  (Csatlakozas a futo Chrome-hoz a 9222-es porton...)"
+    
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = "python"
     $psi.Arguments = "`"$tempPython`" `"$url`" `"$excelPath`" `"$downloadFolder`""
