@@ -1,3 +1,5 @@
 1. Csak VPN nélkül megy, a pip installok és az app maga is.
 
 2. fáj -> properties -> unblock, afájlt C:\temp-be helyezni. Powershellben meghívni
+
+3. chromedriver elérési útvonal megadása adott gépen, ha undetected-chromedriver verziót használjuk végül.

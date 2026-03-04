@@ -628,7 +628,7 @@ def main():
     update_progress(0, total)
     log_message("")
 
-    # --- Bongeszo inditas undetected-chromedriver-rel ---
+    # --- Bongeszo inditas undetected-chromedriver-rel (fix útvonal) ---
     log_message("[2/5] Bongeszo inditasa (undetected-chromedriver)...")
     try:
         options = uc.ChromeOptions()
@@ -651,8 +651,12 @@ def main():
         }
         options.add_experimental_option("prefs", prefs)
 
-        driver = uc.Chrome(options=options)
-        log_success("Bongeszo sikeresen elindult (undetected mod)")
+        # 🔥 FIX ÚTVONAL - nem próbálkozik letöltéssel
+        driver = uc.Chrome(
+            driver_executable_path=r"C:\Users\h4tlk1\.cache\selenium\chromedriver\win64\144.0.7559.133\chromedriver.exe",
+            options=options
+        )
+        log_success("Bongeszo sikeresen elindult (undetected mod, fix driver)")
 
     except Exception as e:
         log_error("Bongeszo inditasi hiba", str(e))
@@ -899,7 +903,7 @@ if __name__ == "__main__":
     [System.IO.File]::WriteAllText($tempPython, $pythonScript, $utf8WithBom)
 
     Write-Log "Python script futtatasa..."
-    Write-Log "(Elso futtatasnal az undetected-chromedriver letoltheti a Chrome drivert - ez normal)"
+    Write-Log "(A fix chromedriver útvonalat használjuk, nem történik letöltés)"
     Write-Log ""
 
     $psi = New-Object System.Diagnostics.ProcessStartInfo
