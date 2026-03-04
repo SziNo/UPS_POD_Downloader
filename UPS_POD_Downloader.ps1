@@ -316,7 +316,7 @@ $startButton.Add_Click({
     Write-Log "Felhasznalo: $username"
     Write-Log ""
     
-    # Python script – VÉGSŐ VERZIÓ (minden pontosítással)
+    # Python script – VÉGSŐ VERZIÓ (javított ablakkezeléssel)
     $pythonScript = @'
 import sys
 import pandas as pd
@@ -680,7 +680,7 @@ def main():
     UPS_PASSWORD = sys.argv[5]
 
     log_message("="*60)
-    log_message("PYTHON SCRIPT FUT (VÉGSŐ VERZIÓ)")
+    log_message("PYTHON SCRIPT FUT (VÉGSŐ VERZIÓ - about:blank NÉLKÜL)")
     log_message("="*60)
     log_message(f"Excel: {excel_path}")
     log_message(f"Mappa: {download_folder}")
@@ -824,18 +824,6 @@ def main():
             log_message(f"Feldolgozas: {tracking} -> {new_name} (Excel sor: {excel_row})")
             log_message("-"*50)
 
-            # Ha esetleg eredményoldalon ragadtunk, visszanavigálunk
-            current_url = driver.current_url
-            if "tracknum" in current_url or "InquiryNumber" in current_url:
-                log_step("Nav", "Eredményoldalon vagyunk, visszanavigalas...")
-                driver.get("about:blank")
-                time.sleep(1)
-                driver.get(ups_url)
-                WebDriverWait(driver, 15).until(
-                    EC.presence_of_element_located((By.ID, "stApp_trackingNumber"))
-                )
-                time.sleep(2)
-
             log_step("3a", "Tracking szám mező keresése...")
             track_selectors = [
                 (By.ID, "stApp_trackingNumber", "ID: stApp_trackingNumber"),
@@ -855,7 +843,6 @@ def main():
             human_click(driver, track_input)
             time.sleep(random.uniform(0.5, 1.0))
             
-            # Háromszoros törlés biztonság kedvéért
             track_input.clear()
             time.sleep(0.3)
             track_input.send_keys(Keys.CONTROL + "a")
@@ -878,12 +865,10 @@ def main():
                 handle_mfa_popup(driver)
                 
                 try:
-                    # Először URL változásra várunk
                     WebDriverWait(driver, 10).until(
                         EC.url_contains("tracknum")
                     )
                     time.sleep(2)
-                    # Majd POD gombra
                     WebDriverWait(driver, 20).until(
                         EC.presence_of_element_located((By.ID, "stApp_btnProofOfDeliveryonDetails"))
                     )
@@ -917,19 +902,17 @@ def main():
             human_click(driver, pod_link)
             log_success(f"POD link megnyitva ({used})")
 
+            # Várj a POD ablakra, de NE válts át - a save_pod_pdf kezeli
             try:
                 WebDriverWait(driver, 8).until(
                     lambda d: len(d.window_handles) > 1
                 )
-                for w in driver.window_handles:
-                    if w != main_window:
-                        driver.switch_to.window(w)
-                        break
-                log_success("POD ablakra valtva")
+                log_success("POD ablak megnyilt")
                 time.sleep(3)
             except:
                 log_step("Ablak", "Nincs uj ablak")
 
+            # Itt még a főablakban vagyunk
             pdf_saved = save_pod_pdf(driver, download_folder, new_name)
 
             if pdf_saved:
@@ -940,13 +923,15 @@ def main():
             else:
                 log_error("PDF mentés sikertelen")
 
-            # Visszanavigálás Angular state reset-tel
+            # Visszanavigálás - about:blank NÉLKÜL
             log_step("Nav", "Visszanavigalas a tracking foroldalra...")
-            driver.get("about:blank")  # Angular state reset
-            time.sleep(1)
             driver.get(ups_url)
+            time.sleep(random.uniform(2, 3))
             
-            # Várj a tracking mezőre
+            # Session ellenőrzés
+            handle_mfa_popup(driver)
+            login_if_needed(driver, UPS_USERNAME, UPS_PASSWORD)
+            
             try:
                 WebDriverWait(driver, 15).until(
                     EC.presence_of_element_located((By.ID, "stApp_trackingNumber"))
@@ -954,16 +939,7 @@ def main():
                 log_success("Tracking oldal keszen all")
                 time.sleep(random.uniform(1.5, 2.5))
             except TimeoutException:
-                log_step("Nav", "Tracking mezo nem jelent meg, oldal frissitese...")
-                driver.refresh()
-                time.sleep(3)
-                try:
-                    WebDriverWait(driver, 15).until(
-                        EC.presence_of_element_located((By.ID, "stApp_trackingNumber"))
-                    )
-                    log_success("Tracking oldal frissites utan keszen all")
-                except:
-                    log_error("Tracking oldal nem toltott be, folytatjuk...")
+                log_error("Tracking mezo nem jelent meg, folytatjuk...")
 
             processed += 1
             update_progress(processed, total)
