@@ -292,7 +292,7 @@ $startButton.Add_Click({
     Write-Log "Felhasznalo: $username"
     Write-Log ""
     
-    # Python script – TELJES ANTI-DETECTION + MFA KEZELÉS + POD VÁRAKOZÁS
+    # Python script – TELJES ANTI-DETECTION + MFA KEZELÉS (pontos selector) + POD VÁRAKOZÁS
     $pythonScript = @'
 import sys
 import pandas as pd
@@ -344,28 +344,33 @@ def check_element(driver, by, selector, timeout=5, description=""):
         return None
 
 def handle_mfa_popup(driver):
-    """MFA / 2FA felugró kezelése - Skip for now"""
+    """MFA / 2FA felugró kezelése - Skip for now (pontos selectorokkal)"""
     try:
-        skip_selectors = [
-            (By.LINK_TEXT, "Skip for now"),
-            (By.PARTIAL_LINK_TEXT, "Skip"),
-            (By.CSS_SELECTOR, "a[data-analytics*='skip']"),
-            (By.XPATH, "//a[contains(text(),'Skip')]"),
-            (By.XPATH, "//button[contains(text(),'Skip')]"),
-            (By.XPATH, "//a[contains(text(),'skip')]"),
-        ]
-        for by, sel in skip_selectors:
-            try:
-                btn = WebDriverWait(driver, 4).until(
-                    EC.element_to_be_clickable((by, sel))
-                )
-                log_step("MFA", "MFA popup észlelve, Skip for now...")
-                btn.click()
-                log_success("MFA popup kihagyva")
-                time.sleep(2)
-                return True
-            except:
-                continue
+        # Első próbálkozás: a pontos class alapján
+        try:
+            skip_btn = WebDriverWait(driver, 3).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "button.af-nextButton"))
+            )
+            log_step("MFA", "MFA popup észlelve, Skip for now...")
+            skip_btn.click()
+            log_success("MFA popup kihagyva")
+            time.sleep(2)
+            return True
+        except:
+            pass
+        
+        # Második próbálkozás: a szöveg alapján
+        try:
+            skip_btn = WebDriverWait(driver, 2).until(
+                EC.element_to_be_clickable((By.XPATH, "//button[contains(text(),'Skip for now')]"))
+            )
+            skip_btn.click()
+            log_success("MFA popup kihagyva (szöveg alapján)")
+            time.sleep(2)
+            return True
+        except:
+            pass
+        
         log_step("MFA", "Nincs MFA popup")
         return False
     except Exception as e:
