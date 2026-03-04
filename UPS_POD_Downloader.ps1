@@ -40,7 +40,7 @@ $infoLabel.Font = New-Object System.Drawing.Font("Arial", 9)
 $infoPanel.Controls.Add($infoLabel)
 $form.Controls.Add($infoPanel)
 
-# UPS URL
+# UPS URL - FRISSÍTVE a te linkeddel
 $urlLabel = New-Object System.Windows.Forms.Label
 $urlLabel.Location = New-Object System.Drawing.Point(10, 160)
 $urlLabel.Size = New-Object System.Drawing.Size(120, 25)
@@ -51,7 +51,7 @@ $form.Controls.Add($urlLabel)
 $urlBox = New-Object System.Windows.Forms.TextBox
 $urlBox.Location = New-Object System.Drawing.Point(140, 160)
 $urlBox.Size = New-Object System.Drawing.Size(470, 25)
-$urlBox.Text = "https://www.ups.com/track?loc=en_US"
+$urlBox.Text = "https://www.ups.com/track?loc=en_US&requester=ST/"
 $urlBox.Font = New-Object System.Drawing.Font("Arial", 10)
 $form.Controls.Add($urlBox)
 
@@ -239,7 +239,7 @@ $startButton.Add_Click({
     Write-Log "UPS URL: $url"
     Write-Log ""
     
-    # Python script – Chrome profil használattal
+    # Python script – profil NÉLKÜL, frissített URL-lel
     $pythonScript = @'
 import sys
 import pandas as pd
@@ -549,14 +549,7 @@ def main():
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option('useAutomationExtension', False)
 
-    # FONTOS: Meglévő Chrome profil használata
-    user_data_dir = os.path.join(os.environ['USERPROFILE'], 'AppData', 'Local', 'Google', 'Chrome', 'User Data')
-    if os.path.exists(user_data_dir):
-        chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
-        chrome_options.add_argument("--profile-directory=Default")
-        log_step("Profil", "Meglévő Chrome profil betöltve - a bejelentkezési adatok és cookie-k megmaradnak!")
-    else:
-        log_step("Profil", "Nem található meglévő profil, üres profillal indulok")
+    # 🔥 PROFIL HASZNÁLATA ELTÁVOLÍTVA - tiszta profillal indul
 
     try:
         service = Service(ChromeDriverManager().install())
@@ -570,10 +563,10 @@ def main():
         time.sleep(3)
         log_success("Oldal betoltve")
         
-        # COOKIE-K ELFOGADÁSA (ha mégis szükség lenne rá)
+        # COOKIE-K ELFOGADÁSA
         accept_cookies(driver)
         
-        # BEJELENTKEZÉS HA KELL (ha a profilban nincs bent)
+        # BEJELENTKEZÉS HA KELL
         login_if_needed(driver)
         
         # MÉG EGYSZER COOKIE (ha a bejelentkezés után újra feljönne)
